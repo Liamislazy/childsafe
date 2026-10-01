@@ -1,0 +1,22 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Data and results are never committed (dataset license + privacy).
+data/raw/
+data/ood/
+data/recordings/
+models/*.task
+outputs/
+*.pt
+*.mp4
+*.avi
+kaggle.json
+*.zip
+data/splits/hashes.npz
+data/splits/splits_old_*.csv
+# never commit credentials
+KGAT_*
+access_token
+.env
+*.egg-info/

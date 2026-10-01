@@ -1,0 +1,118 @@
+# Central config. Every threshold here is a starting value, NOT a tuned result.
+# Tune D3 thresholds by grid search on the dev split of the scenario videos (scripts/grid_search.py),
+# and report on the held-out test split only.
+
+paths:
+  raw_data: data/raw/childsun          # extracted ChildSUn root
+  splits: data/splits/splits.csv
+  hashes: data/splits/hashes.npz
+  outputs: outputs
+  docs: docs                           # generated reports (dataset, split, results)
+  face_model: models/face_landmarker.task
+  hand_model: models/hand_landmarker.task
+
+# Category name (folder name, or filename prefix for the flat ChildSUn layout; normalized:
+# lowercase, no spaces/_/-) -> binary label. Grouping checked against the Kaggle dataset
+# description (2026-10-01): unsafe = knives, sockets, scissors, electric heaters, forks;
+# safe = toys, baby items, fruits (spoon and ball are not named there; kept safe).
+label_map:
+  knife: unsafe
+  socket: unsafe
+  sockets: unsafe
+  scissors: unsafe
+  scissor: unsafe
+  seissor: unsafe     # typo used in ChildSUn filenames
+  electricheater: unsafe
+  heater: unsafe
+  fork: unsafe
+  toy: safe
+  toys: safe
+  ball: safe
+  babyitems: safe
+  babyitem: safe
+  fruit: safe
+  fruits: safe
+  spoon: safe
+  # if the dataset is already organised as safe/ and unsafe/ folders:
+  safe: safe
+  unsafe: unsafe
+
+# Merge spelling variants into one class name.
+# socket/sockets are separate filename sets in ChildSUn (86 + 124 source photos); merged here
+# because the paper lists a single "socket" category.
+category_aliases:
+  sockets: socket
+  seissor: scissors
+  scissor: scissors
+  fruits: fruit
+  toys: toy
+  babyitem: babyitems
+  electricheater: heater
+
+dedup:
+  hash_size: 8              # 64-bit pHash / dHash
+  phash_threshold: 8        # chosen by inspecting montages (docs/split_report.md): true dups have low dHash
+  dhash_threshold: 5
+  dihedral: true            # also compare flipped / 90-degree-rotated variants (catches flip/rotate augmentation)
+
+split:
+  test_frac: 0.15
+  val_frac: 0.15
+  seed: 42
+
+train:
+  img_size: 224
+  batch_size: 32
+  epochs: 25
+  lr: 3.0e-4
+  lr_overrides:             # VGG19 diverged at 3e-4 (best epoch 0 in the first runs)
+    vgg19_bn: 5.0e-5
+  weight_decay: 1.0e-4
+  patience: 6
+  num_workers: 4
+  amp: true
+  robust_aug: false         # A5: random erasing, motion blur, gamma, ISO noise
+  models: [efficientnet_b0, mobilenetv3_large_100, vgg19_bn]
+
+calibration:
+  n_bins: 15
+  reject_threshold: 0.70    # calibrated max prob below this -> "uncertain"
+
+landmarks:
+  normalizer: face_width    # face_width | inter_eye | hand_size (B1 compares all three)
+  min_face_conf: 0.5
+  min_hand_conf: 0.5
+  num_hands: 2
+
+smoothing:
+  method: one_euro          # none | ema | one_euro
+  ema_alpha: 0.4
+  one_euro_min_cutoff: 1.0
+  one_euro_beta: 0.05
+  lost_hold_s: 0.8          # B2: hold last state this long when the mouth landmark disappears
+  lost_max_s: 3.0           # keep 'caution' while the hand stays at the last mouth position, up to this long
+
+temporal:                   # D1
+  d_enter: 0.35             # normalized distance to enter "near" (hysteresis: enter < exit)
+  d_exit: 0.50
+  n_of_m: [3, 10]           # need N near frames among the last M
+  merge_s: 2.0              # merge events closer than this
+  cooldown_s: 5.0           # after a danger alert, do not raise a new one for this long
+
+cascade:                    # D2
+  enabled: true
+  d_far: 1.2                # run Module A only when normalized distance < d_far
+  classify_every_n: 3       # and at most every N frames (cached in between)
+  crop_scale: 2.2           # hand crop = hand bbox * scale
+
+rules:                      # D3
+  p_unsafe_danger: 0.60     # calibrated P(unsafe) needed for danger
+  dwell_danger_s: 0.5       # near for at least this long before danger
+  dwell_safe_caution_s: 3.0 # safe object near mouth this long -> caution (capped, never danger)
+  ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
+
+runtime:
+  camera_index: 0
+  width: 1280
+  height: 720
+  log_dir: outputs/events   # events only; video is never written
