@@ -65,9 +65,15 @@ def main(argv=None):
 
     def loader(part, tf, shuffle):
         ds = CatalogDataset(df[df[col] == part], root, classes, tf)
-        return DataLoader(ds, batch_size=bs, shuffle=shuffle, num_workers=tc["num_workers"],
-                          pin_memory=device.type == "cuda", persistent_workers=tc["num_workers"] > 0,
-                          drop_last=shuffle and len(ds) > bs)
+        sampler = None
+        if shuffle and tc.get("balance") == "sqrt":
+            # class-balanced sampling, weight ~ 1/sqrt(class count): rare classes are drawn more often
+            # without fully flattening the distribution (one epoch still = len(ds) draws)
+            counts = torch.bincount(ds.targets, minlength=len(classes)).float().clamp(min=1)
+            sampler = torch.utils.data.WeightedRandomSampler(counts.rsqrt()[ds.targets], len(ds), replacement=True)
+        return DataLoader(ds, batch_size=bs, shuffle=shuffle and sampler is None, sampler=sampler,
+                          num_workers=tc["num_workers"], pin_memory=device.type == "cuda",
+                          persistent_workers=tc["num_workers"] > 0, drop_last=shuffle and len(ds) > bs)
 
     train_dl = loader("train", train_transform(size, args.robust), True)
     val_dl = loader("val", eval_transform(size), False)

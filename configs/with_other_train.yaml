@@ -1,0 +1,17 @@
+# Larger extension: ChildSUn + Open Images validation crops + ~100 Open Images *train* classes
+# (32 mapped to the ChildSUn classes, ~64 everyday objects as "other"). Open Images *test* stays untouched
+# as the out-of-domain test set.
+#   python scripts/fetch_openimages.py --splits train
+#   python scripts/make_splits.py --config configs/with_other_train.yaml
+#   python -m childsafe.classifier.train --arch efficientnet_b0 --split group --robust --config configs/with_other_train.yaml
+_base_: with_other.yaml
+paths:
+  splits: data/splits/splits_with_other_train.csv
+  hashes: data/splits/hashes_with_other_train.npz
+  outputs: outputs/with_other_train
+  docs: docs/with_other_train
+extra_sources:
+  openimages: data/external/openimages/validation
+  openimages_train: data/external/openimages/train
+train:
+  balance: sqrt
