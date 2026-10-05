@@ -15,7 +15,8 @@ from childsafe.web.app import Demo, create_app
 
 RUNS = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs"
 DEFAULT = {"standard": RUNS / "efficientnet_b0_group" / "best.pt",
-           "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt"}
+           "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt",
+           "robust + other (Open Images)": ROOT / "outputs" / "with_other" / "runs" / "efficientnet_b0_group_robust" / "best.pt"}
 
 
 def main():
@@ -24,7 +25,7 @@ def main():
     ap.add_argument("--config", default=None)
     ap.add_argument("--port", type=int, default=8000)
     args = ap.parse_args()
-    models = dict(m.split("=", 1) for m in args.model) if args.model else {k: str(v) for k, v in DEFAULT.items()}
+    models = dict(m.split("=", 1) for m in args.model) if args.model else         {k: str(v) for k, v in DEFAULT.items() if Path(v).exists()}
     for name, p in models.items():
         if not Path(p).exists():
             raise SystemExit(f"checkpoint for '{name}' not found: {p}")

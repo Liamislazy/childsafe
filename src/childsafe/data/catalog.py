@@ -50,6 +50,27 @@ def parse_filename(stem: str) -> tuple[str | None, str | None]:
     return (m["prefix"], None) if m else (None, None)
 
 
+def source_roots(cfg: dict) -> dict[str, Path]:
+    """Image root per source: ChildSUn plus any `extra_sources` (name -> folder relative to the repo)."""
+    from childsafe.config import ROOT
+    roots = {"childsun": Path(cfg["paths"]["raw_data"])}
+    roots.update({name: (ROOT / folder).resolve() for name, folder in (cfg.get("extra_sources") or {}).items()})
+    return roots
+
+
+def build_full_catalog(cfg: dict) -> pd.DataFrame:
+    """ChildSUn catalog plus extra sources (e.g. Open Images crops), with a `source` column.
+    Extra-source crops are grouped by their original photo id (file name `<imageid>_<class>.jpg`)."""
+    frames = []
+    for name, root in source_roots(cfg).items():
+        df = build_catalog(root, cfg["label_map"], cfg.get("category_aliases"))
+        df["source"] = name
+        if name != "childsun":
+            df["source_id"] = name + "_" + df["path"].map(lambda p: Path(p).stem.split("_")[0])
+        frames.append(df)
+    return pd.concat(frames, ignore_index=True)
+
+
 def build_catalog(root: str | Path, label_map: dict, aliases: dict | None = None) -> pd.DataFrame:
     root = Path(root)
     aliases = aliases or {}

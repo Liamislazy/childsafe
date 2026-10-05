@@ -40,7 +40,7 @@
          background: var(--accent); color: #fff; }
   .btn.ghost { background: var(--chip); color: var(--text); }
   .stats { color: var(--muted); font-size: 12px; margin-left: auto; }
-  .models { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .models { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-content: start; }
   @media (max-width: 520px) { .models { grid-template-columns: 1fr; } }
   .model h3 { margin: 0 0 2px; font-size: 14px; }
   .model .sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; word-break: break-all; }

@@ -13,20 +13,21 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw
 
-from childsafe.config import load_config
-from childsafe.data.catalog import build_catalog
+from childsafe.config import ROOT, load_config
+from childsafe.data.catalog import build_full_catalog, source_roots
+from childsafe.data.dataset import image_paths
 from childsafe.data.dedup import (compute_hashes, cross_split_leakage, find_duplicate_pairs,
                                   union_find_groups)
 from childsafe.data.split import group_split, random_split
 
 
-def montage(root, df, pairs, path, n=24, thumb=112):
+def montage(full_paths, pairs, path, n=24, thumb=112):
     rng = np.random.default_rng(0)
     sel = pairs[rng.permutation(len(pairs))[:n]] if len(pairs) else pairs
     canvas = Image.new("RGB", (thumb * 4, thumb * ((len(sel) + 1) // 2)), "white")
     for k, (i, j, dp, dd) in enumerate(sel):
         for m, idx in enumerate((i, j)):
-            im = Image.open(Path(root) / df.path.iloc[idx]).convert("RGB").resize((thumb, thumb))
+            im = Image.open(full_paths[idx]).convert("RGB").resize((thumb, thumb))
             canvas.paste(im, ((k % 2) * 2 * thumb + m * thumb, (k // 2) * thumb))
         ImageDraw.Draw(canvas).text(((k % 2) * 2 * thumb + 2, (k // 2) * thumb + 2), f"p{dp} d{dd}", fill="yellow")
     canvas.save(path)
@@ -42,17 +43,19 @@ def main():
     cfg = load_config(args.config)
     dc, sc = cfg["dedup"], cfg["split"]
     tp, td = args.phash or dc["phash_threshold"], args.dhash or dc["dhash_threshold"]
-    root = Path(cfg["paths"]["raw_data"])
+    roots = source_roots(cfg)
 
-    df = build_catalog(root, cfg["label_map"], cfg.get("category_aliases"))
+    df = build_full_catalog(cfg)
+    full_paths = image_paths(df, roots)
+    keys = [f"{s}/{p}" for s, p in zip(df.source, df.path)]
     hash_file = Path(cfg["paths"]["hashes"])
     hash_file.parent.mkdir(parents=True, exist_ok=True)
-    if hash_file.exists() and not args.rehash and list(np.load(hash_file, allow_pickle=True)["paths"]) == list(df.path):
+    if hash_file.exists() and not args.rehash and list(np.load(hash_file, allow_pickle=True)["paths"]) == keys:
         z = np.load(hash_file, allow_pickle=True)
         ph, dh = z["phash"], z["dhash"]
     else:
-        ph, dh = compute_hashes([root / p for p in df.path], dc["hash_size"], dc["dihedral"])
-        np.savez(hash_file, phash=ph, dhash=dh, paths=np.array(df.path))
+        ph, dh = compute_hashes(full_paths, dc["hash_size"], dc["dihedral"])
+        np.savez(hash_file, phash=ph, dhash=dh, paths=np.array(keys))
 
     report = ["# Split report (A1)\n", f"Images: {len(df)}. Dihedral hashing: {dc['dihedral']}.\n",
               "## Threshold sensitivity\n", "| pHash thr | dHash thr | dup pairs | groups | largest group | images in groups >1 |",
@@ -85,13 +88,36 @@ def main():
         print(f"WARNING: largest group has {sizes.max()} images (>5%). Threshold may be too loose (chaining).")
     df["group"] = groups
     y = df["category"].to_numpy()
-    df["split_group"] = group_split(y, groups, sc["test_frac"], sc["val_frac"], sc["seed"])
-    df["split_random"] = random_split(y, sc["test_frac"], sc["val_frac"], sc["seed"])
+    base = sc.get("base_splits")
+    if base and (df.source != "childsun").any():
+        # Extension data: keep every ChildSUn image in the split of the canonical ChildSUn split, so test
+        # results stay comparable; only split the extra images (grouped), and let an extra image that is a
+        # near-duplicate of a ChildSUn image follow that image. Bridges between ChildSUn splits are dropped.
+        b = pd.read_csv(ROOT / base).set_index("path")
+        cs = (df.source == "childsun").to_numpy()
+        for col in ("split_group", "split_random"):
+            df[col] = None
+            df.loc[cs, col] = b.loc[df.path[cs], col].to_numpy()
+        fixed = df[cs].groupby("group")["split_group"].agg(lambda s: s.iloc[0] if s.nunique() == 1 else "conflict")
+        extra = ~cs
+        follow = extra & df.group.isin(fixed.index).to_numpy()
+        df.loc[follow, "split_group"] = df.loc[follow, "group"].map(fixed).to_numpy()
+        free = extra & ~follow
+        df.loc[free, "split_group"] = group_split(y[free], groups[free], sc["test_frac"], sc["val_frac"], sc["seed"])
+        df.loc[extra, "split_random"] = random_split(y[extra], sc["test_frac"], sc["val_frac"], sc["seed"])
+        df.loc[df.split_group == "conflict", "split_group"] = "excluded"   # kept as rows so hash arrays stay aligned
+        n_conf = int((df.split_group == "excluded").sum())
+        report.append(f"\nChildSUn rows keep the split of `{base}`. Extra images that are near-duplicates of a ChildSUn "
+                      f"image follow it: {int(follow.sum())}; dropped as bridges between ChildSUn splits: {n_conf}.\n")
+    else:
+        df["split_group"] = group_split(y, groups, sc["test_frac"], sc["val_frac"], sc["seed"])
+        df["split_random"] = random_split(y, sc["test_frac"], sc["val_frac"], sc["seed"])
     out_csv = Path(cfg["paths"]["splits"])
     df.to_csv(out_csv, index=False)
     import hashlib
-    checksum = hashlib.md5("".join(f"{p}:{g}" for p, g in sorted(zip(df.path, df.split_group))).encode()).hexdigest()[:12]
-    print(f"group split checksum: {checksum}  (identical on every machine = identical split)")
+    cs_rows = df[df.get("source", "childsun") == "childsun"]
+    checksum = hashlib.md5("".join(f"{p}:{g}" for p, g in sorted(zip(cs_rows.path, cs_rows.split_group))).encode()).hexdigest()[:12]
+    print(f"ChildSUn group split checksum: {checksum}  (identical on every machine = identical split)")
 
     report += [f"\n## Chosen thresholds: pHash <= {tp}, dHash <= {td}\n",
                f"Near-duplicate pairs: {len(pairs)}; groups: {len(sizes)}; largest: {sizes.max()}; "
@@ -110,11 +136,11 @@ def main():
                "Check `outputs/dedup/pairs_montage_*.jpg` to confirm the pairs really are duplicates / augmentations."]
     mdir = Path(cfg["paths"]["outputs"]) / "dedup"
     mdir.mkdir(parents=True, exist_ok=True)
-    montage(root, df, pairs, mdir / f"pairs_montage_p{tp}_d{td}.jpg")
+    montage(full_paths, pairs, mdir / f"pairs_montage_p{tp}_d{td}.jpg")
     # borderline pairs just above threshold: are we missing real duplicates?
     near = find_duplicate_pairs(ph, dh, tp + 4, td + 4)
     border = near[(near[:, 2] > tp) | (near[:, 3] > td)]
-    montage(root, df, border, mdir / f"pairs_montage_borderline.jpg")
+    montage(full_paths, border, mdir / f"pairs_montage_borderline.jpg")
 
     Path(cfg["paths"]["docs"]).mkdir(parents=True, exist_ok=True)
     (Path(cfg["paths"]["docs"]) / "split_report.md").write_text("\n".join(report), encoding="utf-8")

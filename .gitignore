@@ -13,10 +13,11 @@ outputs/
 *.avi
 kaggle.json
 *.zip
-data/splits/hashes.npz
+data/splits/hashes*.npz
 data/splits/splits_old_*.csv
 # never commit credentials
 KGAT_*
 access_token
 .env
 *.egg-info/
+data/external/

@@ -25,6 +25,7 @@ from childsafe.classifier.calibration import fit_temperature
 from childsafe.classifier.engine import run_inference, summarize
 from childsafe.classifier.models import create_model, save_checkpoint
 from childsafe.config import load_config
+from childsafe.data.catalog import source_roots
 from childsafe.data.dataset import CatalogDataset, eval_transform, train_transform
 
 
@@ -59,7 +60,7 @@ def main(argv=None):
     col = f"split_{args.split}"
     classes = sorted(df["category"].unique())
     binary_map = dict(df[["category", "label"]].drop_duplicates().values)
-    root = cfg["paths"]["raw_data"]
+    root = source_roots(cfg)   # ChildSUn + any extra sources
     size = tc["img_size"]
 
     def loader(part, tf, shuffle):

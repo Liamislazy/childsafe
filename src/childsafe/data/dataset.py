@@ -34,9 +34,17 @@ def eval_transform(size: int, corruption: tuple[str, int] | None = None):
     return T.Compose(tf)
 
 
+def image_paths(df: pd.DataFrame, root: str | Path | dict) -> list[Path]:
+    """root: one folder, or {source: folder} when df has a `source` column (ChildSUn + extra sources)."""
+    if isinstance(root, dict):
+        src = df["source"] if "source" in df else ["childsun"] * len(df)
+        return [Path(root[s]) / p for s, p in zip(src, df["path"])]
+    return [Path(root) / p for p in df["path"]]
+
+
 class CatalogDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, root: str | Path, classes: list[str], transform):
-        self.paths = [Path(root) / p for p in df["path"]]
+    def __init__(self, df: pd.DataFrame, root: str | Path | dict, classes: list[str], transform):
+        self.paths = image_paths(df, root)
         idx = {c: i for i, c in enumerate(classes)}
         self.targets = torch.tensor([idx[c] for c in df["category"]])
         self.transform = transform

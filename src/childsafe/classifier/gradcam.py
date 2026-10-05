@@ -18,8 +18,8 @@ from PIL import Image
 from childsafe.classifier.calibration import softmax
 from childsafe.classifier.models import gradcam_target_layer, load_checkpoint
 from childsafe.config import load_config
-from childsafe.data.catalog import IMG_EXT
-from childsafe.data.dataset import eval_transform
+from childsafe.data.catalog import IMG_EXT, source_roots
+from childsafe.data.dataset import eval_transform, image_paths
 
 
 class GradCAM:
@@ -72,7 +72,7 @@ def main(argv=None):
     else:
         df = pd.read_csv(cfg["paths"]["splits"])
         df = df[df[f"split_{ckpt.get('split', 'group')}"] == "test"].sample(frac=1, random_state=0).head(args.n)
-        paths = [Path(cfg["paths"]["raw_data"]) / p for p in df["path"]]
+        paths = image_paths(df, source_roots(cfg))
         truth = list(df["category"])
 
     out = run / "gradcam"

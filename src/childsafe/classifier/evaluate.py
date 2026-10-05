@@ -22,9 +22,9 @@ from torchvision import transforms as T
 from childsafe.classifier.engine import run_inference, summarize
 from childsafe.classifier.models import load_checkpoint
 from childsafe.config import load_config, normalize_name
-from childsafe.data.catalog import build_catalog
+from childsafe.data.catalog import build_catalog, source_roots
 from childsafe.data.corruptions import KINDS, FixedCorruption
-from childsafe.data.dataset import MEAN, STD, eval_transform
+from childsafe.data.dataset import MEAN, STD, eval_transform, image_paths
 
 
 _CACHE: dict = {}
@@ -33,10 +33,10 @@ _CACHE: dict = {}
 def _cached_images(df, root, size):
     """Decode + resize + center-crop once; corruption passes reuse these (no DataLoader worker re-spawn,
     which costs tens of seconds per pass on Windows)."""
-    key = (str(root), tuple(df["path"]), size)
+    key = (str(root), tuple(df["path"]), tuple(df["source"]) if "source" in df else (), size)
     if key not in _CACHE:
         tf = eval_transform(size).transforms[:2]
-        _CACHE[key] = [tf[1](tf[0](Image.open(Path(root) / p).convert("RGB"))) for p in df["path"]]
+        _CACHE[key] = [tf[1](tf[0](Image.open(p).convert("RGB"))) for p in image_paths(df, root)]
     return _CACHE[key]
 
 
@@ -52,6 +52,29 @@ def _eval_df(model, ckpt, df, root, device, cfg, corruption=None, plot_prefix=No
     rc = cfg["calibration"]
     return summarize(lg, y, ckpt["classes"], ckpt["binary_map"], ckpt["temperature"],
                      rc["reject_threshold"], rc["n_bins"], plot_prefix, title)
+
+
+def _unknown_report(model, ckpt, df, root, device, cfg) -> dict:
+    from childsafe.classifier.calibration import softmax
+    size = ckpt["img_size"]
+    imgs = _cached_images(df, root, size)
+    tail = T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)])
+    x = torch.stack([tail(im) for im in imgs])
+    lg, _ = run_inference(model, DataLoader(TensorDataset(x, torch.zeros(len(x), dtype=torch.long)), batch_size=64), device)
+    p = softmax(lg, ckpt["temperature"])
+    unsafe = np.array([ckpt["binary_map"][c] == "unsafe" for c in ckpt["classes"]])
+    pu = p[:, unsafe].sum(1)
+    thr = cfg["calibration"]["reject_threshold"]
+    status = np.where(np.maximum(pu, 1 - pu) < thr, "uncertain", np.where(pu >= 0.5, "unsafe", "safe"))
+    pred = np.array(ckpt["classes"])[p.argmax(1)]
+    out = {}
+    for c in sorted(df["category"].unique()):
+        m = (df["category"] == c).to_numpy()
+        vc = pd.Series(pred[m]).value_counts(normalize=True).head(3).round(3).to_dict()
+        out[c] = {"n": int(m.sum()), "unsafe": float((status[m] == "unsafe").mean()),
+                  "uncertain": float((status[m] == "uncertain").mean()), "safe": float((status[m] == "safe").mean()),
+                  "mean_max_prob": float(p[m].max(1).mean()), "top_predicted": vc}
+    return out
 
 
 def main(argv=None):
@@ -73,7 +96,13 @@ def main(argv=None):
         ood = build_catalog(args.ood, cfg["label_map"], cfg.get("category_aliases"))
         unknown = set(ood["category"]) - set(ckpt["classes"])
         if unknown:
-            print(f"[ood] dropping categories unknown to the model: {unknown}")
+            # objects the model was never trained on (e.g. "other": pen, phone, hand): there is no correct
+            # class, so report how the alert layer would treat them (unsafe = would raise danger near mouth)
+            report["unknown_objects"] = _unknown_report(model, ckpt, ood[~ood["category"].isin(ckpt["classes"])],
+                                                        args.ood, device, cfg)
+            for c, r in report["unknown_objects"].items():
+                print(f"[ood] '{c}' (not a trained class, n={r['n']}): called unsafe {r['unsafe']:.1%}, "
+                      f"uncertain {r['uncertain']:.1%}, safe {r['safe']:.1%}; top predictions {r['top_predicted']}")
             ood = ood[ood["category"].isin(ckpt["classes"])]
         # condition = first folder level that is not the class name (e.g. low_light, dim, bright)
         ood["condition"] = [next((p for p in Path(x).parts[:-1] if normalize_name(p) not in cfg["label_map"]), "all")
@@ -83,7 +112,7 @@ def main(argv=None):
                                       for c, g in ood.groupby("condition")} if ood["condition"].nunique() > 1 else {}
         test = pd.read_csv(cfg["paths"]["splits"])
         test = test[test[split_col] == "test"]
-        ind = _eval_df(model, ckpt, test, cfg["paths"]["raw_data"], device, cfg)
+        ind = _eval_df(model, ckpt, test, source_roots(cfg), device, cfg)
         report["in_domain_test"] = ind
         report["ood_drop"] = {"accuracy": ind["accuracy"] - report["ood"]["accuracy"],
                               "unsafe_recall": ind["binary"]["unsafe_recall"] - report["ood"]["binary"]["unsafe_recall"]}
@@ -98,7 +127,7 @@ def main(argv=None):
         for kind in KINDS:
             curves[kind] = []
             for sev in range(0, 6):
-                m = _eval_df(model, ckpt, test, cfg["paths"]["raw_data"], device, cfg, (kind, sev))
+                m = _eval_df(model, ckpt, test, source_roots(cfg), device, cfg, (kind, sev))
                 curves[kind].append({"severity": sev, "accuracy": m["accuracy"],
                                      "unsafe_recall": m["binary"]["unsafe_recall"], "ece": m["ece_calibrated"]})
                 print(f"{kind} s{sev}: acc {m['accuracy']:.4f} unsafe_recall {m['binary']['unsafe_recall']:.4f}")
