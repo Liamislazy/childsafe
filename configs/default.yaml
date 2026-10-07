@@ -112,7 +112,18 @@ rules:                      # D3
   ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
 
 runtime:
+  max_people: 4
+  stale_frame_s: 0.25
   camera_index: 0
   width: 1280
   height: 720
   log_dir: outputs/events   # events only; video is never written
+
+detector:
+  weights: models/yolo11n-seg.pt
+  min_conf: 0.5
+  complete_object_coverage: false # COCO excludes coins/pens; never infer their location
+
+quality:
+  calibrated: false
+  max_hand_object_px: 80

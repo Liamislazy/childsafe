@@ -26,12 +26,18 @@ COLORS = {0: (60, 180, 60), 1: (0, 190, 255), 2: (0, 0, 255)}   # BGR
 
 def draw(frame, lm, out, fps):
     h, w = frame.shape[:2]
-    if lm.face is not None:
-        m = lm.face[MOUTH, :2].mean(0).astype(int)
-        cv2.circle(frame, tuple(m), 6, (255, 0, 255), -1)
-    for hand in lm.hands:
-        for p in hand[:, :2].astype(int):
-            cv2.circle(frame, tuple(p), 2, (255, 255, 0), -1)
+    for person in out.get('persons', []):
+        pid = person['person_id']
+        if pid in lm.boxes:
+            x0,y0,x1,y1 = map(int, lm.boxes[pid])
+            color = COLORS[person['level']] if person['level'] or person['green'] else (100,100,100)
+            cv2.rectangle(frame, (x0,y0),(x1,y1),color,2)
+            cv2.putText(frame, f"ID {pid}: {LEVEL_NAMES[person['level']]} / {person['observation']}",
+                        (x0,max(60,y0)),cv2.FONT_HERSHEY_SIMPLEX,.5,color,2)
+    for obj in lm.objects:
+        x0,y0,x1,y1 = map(int,obj.box)
+        cv2.rectangle(frame,(x0,y0),(x1,y1),(255,180,0),1)
+        cv2.putText(frame,obj.label,(x0,y0),cv2.FONT_HERSHEY_SIMPLEX,.4,(255,180,0),1)
     lvl = out["level"]
     color = COLORS[lvl] if lvl or out.get('green') else (100, 100, 100)
     cv2.rectangle(frame, (0, 0), (w, 44), color, -1)
@@ -82,7 +88,7 @@ def main():
             lm, row, out = pipe.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), t)
             logger.update(out)
             if args.log_features:
-                feats.append({**row, "condition": args.condition, "level": out["level"]})
+                feats.extend({**f, 'condition': args.condition} for f in out['feature_rows'])
             now = time.perf_counter()
             fps = 0.9 * fps + 0.1 / max(now - last, 1e-6) if fps else 1 / max(now - last, 1e-6)
             last = now

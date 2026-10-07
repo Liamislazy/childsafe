@@ -7,8 +7,9 @@ still give a small value (handoff risk 1). ``hand_face_ratio`` is logged as a we
 from __future__ import annotations
 
 import numpy as np
-
-from childsafe.vision.landmarks import FrameLandmarks
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from childsafe.vision.landmarks import FrameLandmarks
 
 # Face Landmarker (478-point mesh) indices.
 MOUTH = [13, 14, 78, 308]          # inner upper lip, inner lower lip, inner corners
