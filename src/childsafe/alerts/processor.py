@@ -11,6 +11,7 @@ import math
 from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, NofM
+from childsafe.alerts.observation import observation
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
 NORMAL, CAUTION, DANGER = 0, 1, 2
@@ -67,6 +68,9 @@ class AlertProcessor:
         self.obj = None            # (t, p_unsafe_raw, p_unsafe_cal, class)
         self.danger_on = False
         self.danger_block_until = -math.inf
+        self.last_evidence_t = None
+        self.last_level = NORMAL
+        self.event_active = False
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -87,11 +91,21 @@ class AlertProcessor:
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
+        quality, quality_reasons = observation(f)
+        modern = 'schema_version' in f
+        valid = f.get('frame_valid', True) and f.get('source_ok', True)
+        visible = bool(f.get('mouth_visible', f.get('face_ok'))) and valid
+        if modern and (not valid or f.get('association_ambiguous')):
+            obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
                         obj.get("obj_conf", math.nan))
 
         d_raw = f.get(f"d_{self.norm}")
+        if not visible or (modern and f.get('association_ambiguous')):
+            d_raw = math.nan
+        if visible and not _isnan(d_raw):
+            self.last_evidence_t = t
         lost_near = False
         if _isnan(d_raw):
             d = None
@@ -154,6 +168,25 @@ class AlertProcessor:
             level, reason = CAUTION, "unsafe object approaching"
         if lost_near and level < CAUTION:
             level, reason = CAUTION, "mouth hidden by hand"
+        # Preserve recent risk, but do not accumulate dwell from held coordinates.
+        held = (self.c.lost_landmark and not visible and self.last_evidence_t is not None
+                and 0 <= t - self.last_evidence_t <= sc['lost_hold_s'])
+        if held and self.last_level > level:
+            level, reason = self.last_level, 'recent evidence held; mouth not observable'
+        end_reason = ''
+        if self.event_active and not held:
+            if not f.get('source_ok', True):
+                end_reason = 'source_disconnected'
+            elif f.get('person_left', False):
+                end_reason = 'person_left_frame'
+            elif not visible or f.get('association_ambiguous', False):
+                end_reason = 'observation_lost'
+            elif level == NORMAL:
+                end_reason = 'observed_departure' if not _isnan(d_raw) and d_raw > tc['d_exit'] else 'risk_changed'
+        if end_reason:
+            self.event_active = False
+        elif level > NORMAL:
+            self.event_active = True
 
         # Cooldown suppresses repeat notifications, never the displayed risk.
         notify = False
@@ -164,7 +197,10 @@ class AlertProcessor:
             self.danger_on = False
             self.danger_block_until = t + tc["cooldown_s"]
 
+        self.last_level = level
         return {"t": t, "level": level, "reason": reason, "d_raw": d_raw, "d": d if d is not None else math.nan,
                 "speed": speed, "ttc": ttc, "near_frame": near_frame, "near": near, "dwell": dwell,
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
-                "notify": notify}
+                "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
+                'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
+                'green': level == NORMAL and quality == 'observable'}

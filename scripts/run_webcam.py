@@ -33,8 +33,9 @@ def draw(frame, lm, out, fps):
         for p in hand[:, :2].astype(int):
             cv2.circle(frame, tuple(p), 2, (255, 255, 0), -1)
     lvl = out["level"]
-    cv2.rectangle(frame, (0, 0), (w, 44), COLORS[lvl], -1)
-    txt = f"{LEVEL_NAMES[lvl].upper()}  {out['reason']}"
+    color = COLORS[lvl] if lvl or out.get('green') else (100, 100, 100)
+    cv2.rectangle(frame, (0, 0), (w, 44), color, -1)
+    txt = f"{LEVEL_NAMES[lvl].upper()} / {out.get('observation', 'degraded')}  {out['reason']}"
     cv2.putText(frame, txt, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
     d = out["d"]
     info = (f"d={d:.2f} " if not math.isnan(d) else "d=-- ") + \
