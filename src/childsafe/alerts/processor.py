@@ -102,6 +102,8 @@ class AlertProcessor:
                         obj.get("obj_conf", math.nan))
 
         d_raw = f.get(f"d_{self.norm}")
+        if modern and f.get('proximity_evidence', False):
+            d_raw = f.get('object_d_relative')
         if not visible or (modern and f.get('association_ambiguous')):
             d_raw = math.nan
         if visible and not _isnan(d_raw):
@@ -157,7 +159,8 @@ class AlertProcessor:
         # ---- D3 alert matrix ------------------------------------------------------------
         level, reason = NORMAL, ""
         if near:
-            if status == "unsafe" and p_unsafe >= rc["p_unsafe_danger"] and dwell >= rc["dwell_danger_s"]:
+            if (status == 'unsafe' and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
+                    and (not modern or f.get('proximity_evidence', False))):
                 level, reason = DANGER, "unsafe object near mouth in image"
             elif status in ("unsafe", "uncertain", "none"):
                 level, reason = CAUTION, f"{status} object near mouth"
@@ -170,6 +173,7 @@ class AlertProcessor:
             level, reason = CAUTION, "mouth hidden by hand"
         # Preserve recent risk, but do not accumulate dwell from held coordinates.
         held = (self.c.lost_landmark and not visible and self.last_evidence_t is not None
+                and f.get('source_ok', True) and not f.get('person_left',False)
                 and 0 <= t - self.last_evidence_t <= sc['lost_hold_s'])
         if held and self.last_level > level:
             level, reason = self.last_level, 'recent evidence held; mouth not observable'

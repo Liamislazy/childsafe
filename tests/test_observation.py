@@ -6,7 +6,7 @@ from childsafe.config import load_config
 def f(t=0, **kw):
     return dict(t=t, schema_version=2, face_ok=True, hand_ok=True, mouth_visible=True,
                 detector_ok=True, classifier_ok=True, calibrated=True, object_coverage=True,
-                d_face_width=.1, **kw)
+                d_face_width=.1, proximity_evidence=True, object_d_relative=.1, **kw)
 
 
 def test_missing_mouth_and_model_are_not_green():

@@ -8,6 +8,7 @@ import time
 from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou
+from childsafe.vision.elevated import ElevatedQuality, object_proximity
 
 OBJ_COLUMNS = ['p_unsafe_raw', 'p_unsafe_cal', 'obj_class', 'obj_conf']
 
@@ -46,7 +47,8 @@ class FramePipeline:
     def _new_state(self):
         from childsafe.vision.geometry import GeometryExtractor
         state = dict(processor=AlertProcessor(self.cfg, self.components), geometry=GeometryExtractor(),
-                     landmarks=None, error='', features={}, object_box=None)
+                     landmarks=None, error='', features={}, object_box=None,
+                     quality=ElevatedQuality(self.cfg.get('quality', {})))
         try:
             state['landmarks'] = self.landmark_factory()
         except Exception as exc:
@@ -112,10 +114,17 @@ class FramePipeline:
                      object_coverage=self.cfg.get('detector', {}).get('complete_object_coverage', False),
                      quality_reasons=[state['error']] if state['error'] else [])
             obj_result = None
+            crop_box = scene.boxes[pid]
+            f.update(state['quality'].measure(rgb[crop_box[1]:crop_box[3],crop_box[0]:crop_box[2]],lm,f))
+            if state['error']:
+                f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
+            obj = None
             if objects:
-                obj = min(objects, key=lambda d: ((d.box[0]+d.box[2])/2-f.get('mouth_x', w/2))**2 +
-                                                ((d.box[1]+d.box[3])/2-f.get('mouth_y', h/2))**2)
+                # Select by visible mask proximity, so a long object's tip is not missed.
+                ranked = [(object_proximity(d,lm,f,self.cfg.get('quality',{})),d) for d in objects]
+                _, obj = min(ranked,key=lambda item: item[0]['object_d_relative']
+                             if math.isfinite(item[0]['object_d_relative']) else math.inf)
                 if state['object_box'] is not None and iou(state['object_box'], obj.box) < .2:
                     state['processor'].reset()
                 state['object_box'] = obj.box
@@ -135,6 +144,9 @@ class FramePipeline:
             if pid in ambiguous:
                 state['processor'].reset()
                 state['geometry'].__init__()
+            f.update(object_proximity(obj,lm,f,self.cfg.get('quality',{})))
+            if not f['proximity_evidence']:
+                f['quality_reasons'].append('no reliable held-object mask evidence')
             out = state['processor'].step(f, obj_result)
             out.update(person_id=pid, box=track.box, session_id=self.session_id)
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)
