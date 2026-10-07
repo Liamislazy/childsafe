@@ -23,7 +23,7 @@ def test_legacy_has_unknown_coverage():
 
 def test_short_occlusion_preserves_danger_long_loss_ends_event():
     p = AlertProcessor(load_config())
-    obj = dict(p_unsafe_raw=.9, p_unsafe_cal=.9, obj_class='knife')
+    obj = dict(p_unsafe_raw=.9, p_unsafe_cal=.9, obj_conf=.9, obj_class='knife')
     for i in range(60):
         out = p.step(f(i/30), obj)
     assert out['level'] == DANGER

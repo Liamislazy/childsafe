@@ -10,7 +10,7 @@ from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
 
-OBJ_COLUMNS = ['p_unsafe_raw', 'p_unsafe_cal', 'obj_class', 'obj_conf']
+OBJ_COLUMNS = ['p_unsafe_raw','p_unsafe_cal','obj_class','obj_conf','p_unknown_cal']
 
 
 @dataclass
@@ -127,6 +127,7 @@ class FramePipeline:
                              if math.isfinite(item[0]['object_d_relative']) else math.inf)
                 if state['object_box'] is not None and iou(state['object_box'], obj.box) < .2:
                     state['processor'].reset()
+                    f['history_reset'] = True
                 state['object_box'] = obj.box
                 if self.classifier is not None and pid not in ambiguous:
                     try:
@@ -142,6 +143,7 @@ class FramePipeline:
                 state['object_box'] = None
                 state['processor'].obj = None
             if pid in ambiguous:
+                f['history_reset'] = True
                 state['processor'].reset()
                 state['geometry'].__init__()
             f.update(object_proximity(obj,lm,f,self.cfg.get('quality',{})))
@@ -180,9 +182,18 @@ class FramePipeline:
         aggregate = dict(t=t, level=level, reason='; '.join(sorted({o['reason'] for o in outputs if o['reason']})),
                          observation=quality, green=bool(outputs) and all(o['green'] for o in outputs),
                          persons=outputs, feature_rows=rows, inference_s=inference_s,
+                         calibrated=self.cfg.get('quality',{}).get('calibrated',False),
+                         observation_reasons=sorted({r for o in outputs for r in o['observation_reasons']}),
                          d=math.nan, near=False, dwell=0., obj_status='none', obj_class='', p_unsafe=math.nan)
         if not outputs:
             aggregate['reason'] = 'no observable person; detector limited' if not self.detector.ok else 'no observable person'
+            # Preserve empty/failed source intervals in replay and coverage denominators.
+            f = dict(t=t,schema_version=2,person_id=0,session_id=self.session_id,source_ok=source_ok,
+                     frame_valid=valid,mouth_visible=False,face_ok=0,hand_ok=0,
+                     detector_ok=self.detector.ok,classifier_ok=self.classifier is not None,
+                     frame_age_s=frame_age_s,inference_s=inference_s,
+                     received_t=received_t if received_t is not None else t)
+            rows.append(f)
         return scene, rows[0] if rows else {}, aggregate
 
     def close(self):

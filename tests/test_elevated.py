@@ -39,8 +39,8 @@ def test_bounding_box_or_hand_near_head_cannot_confirm_danger():
     p = AlertProcessor(load_config())
     for i in range(60):
         f = dict(t=i/30,schema_version=2,face_ok=True,mouth_visible=True,hand_ok=True,
-                 d_face_width=.1,proximity_evidence=False)
-        out = p.step(f,dict(p_unsafe_cal=.9,p_unsafe_raw=.9,obj_class='knife'))
+                 detector_ok=True,classifier_ok=True,d_face_width=.1,proximity_evidence=False)
+        out = p.step(f,dict(p_unsafe_cal=.9,p_unsafe_raw=.9,obj_conf=.9,obj_class='knife'))
         assert out['level'] != DANGER
 
 

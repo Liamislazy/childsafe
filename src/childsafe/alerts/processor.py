@@ -93,6 +93,8 @@ class AlertProcessor:
     # ---- main step --------------------------------------------------------------------
     def step(self, f: dict, obj: dict | None = None) -> dict:
         """f: feature dict from GeometryExtractor; obj: ObjectClassifier output for this frame, if run."""
+        if f.get('history_reset', False):
+            self.reset()
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
@@ -111,10 +113,13 @@ class AlertProcessor:
         visible = bool(f.get('mouth_visible', f.get('face_ok'))) and valid
         if modern and (not valid or f.get('association_ambiguous')):
             obj = None
+        if modern and (not f.get('classifier_ok', False) or not f.get('detector_ok', False)):
+            obj = None
+            self.obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
             self.last_classify_t = t
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
-                        obj.get("obj_conf", math.nan))
+                        obj.get('obj_conf',math.nan),obj.get('p_unknown_cal',0.))
 
         d_raw = f.get(f"d_{self.norm}")
         if modern and f.get('proximity_evidence', False):
@@ -162,15 +167,18 @@ class AlertProcessor:
         dwell = self.confirmed_dwell
 
         # object status from the most recent classification (valid for 1 s)
-        status, p_unsafe, obj_class = "none", math.nan, ""
+        status, p_unsafe, obj_class, class_conf = 'none',math.nan,'',math.nan
         if self.c.object_gate:
             if self.obj is not None and t - self.obj[0] <= 1.0:
                 p_unsafe = self.obj[2] if self.c.calibration else self.obj[1]
                 obj_class = self.obj[3]
                 conf = self.obj[4]
-                if _isnan(conf):  # legacy binary feature logs have no category confidence
+                class_conf = conf
+                if _isnan(conf) and not modern:  # legacy binary feature logs have no category confidence
                     conf = max(p_unsafe, 1 - p_unsafe)
-                if conf < self.cfg["calibration"]["reject_threshold"]:
+                threshold = self.cfg['calibration']['reject_threshold']
+                if (_isnan(conf) or conf < threshold or max(p_unsafe,1-p_unsafe) < threshold
+                        or obj_class in ('other','unknown','empty_hand') or self.obj[5] >= .5):
                     status = "uncertain"
                 else:
                     status = "unsafe" if p_unsafe >= 0.5 else "safe"
@@ -227,5 +235,6 @@ class AlertProcessor:
                 "speed": speed, "ttc": ttc, "near_frame": near_frame, "near": near, "dwell": dwell,
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
                 "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
+                'obj_conf': class_conf,
                 'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
                 'green': level == NORMAL and quality == 'observable'}

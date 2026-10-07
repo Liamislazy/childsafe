@@ -27,7 +27,9 @@ class ObjectClassifier:
         self.model, ck = load_checkpoint(ckpt_path, self.device)
         self.classes, self.temperature = ck["classes"], ck["temperature"]
         self.unsafe = np.array([ck["binary_map"][c] == "unsafe" for c in self.classes])
-        self.tf = eval_transform(ck["img_size"])
+        self.unknown = np.array([ck["binary_map"][c] == "unknown" or c in ("other", "unknown", "empty_hand")
+                                 for c in self.classes])
+        self.tf = eval_transform(ck["img_size"], preprocessing=ck.get("preprocessing", "center_crop"))
 
     @torch.no_grad()
     def __call__(self, rgb: np.ndarray, box=None) -> dict:
@@ -37,4 +39,5 @@ class ObjectClassifier:
         raw, cal = softmax(logits, 1.0)[0], softmax(logits, self.temperature)[0]
         k = int(cal.argmax())
         return {"p_unsafe_raw": float(raw[self.unsafe].sum()), "p_unsafe_cal": float(cal[self.unsafe].sum()),
-                "obj_class": self.classes[k], "obj_conf": float(cal[k])}
+                "obj_class": self.classes[k], "obj_conf": float(cal[k]),
+                "p_unknown_cal": float(cal[self.unknown].sum())}
