@@ -88,7 +88,8 @@ class AlertProcessor:
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
-            self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""))
+            self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
+                        obj.get("obj_conf", math.nan))
 
         d_raw = f.get(f"d_{self.norm}")
         lost_near = False
@@ -97,12 +98,8 @@ class AlertProcessor:
             if self.c.lost_landmark and self.last_face_t is not None and not f.get("face_ok"):
                 gap = t - self.last_face_t
                 was_near = self.last_d is not None and self.last_d < tc["d_exit"]
-                hand_at_old_mouth = not _isnan(f.get("d_last_mouth")) and f["d_last_mouth"] < tc["d_exit"]
-                if f.get("hand_ok") and ((was_near and gap <= sc["lost_hold_s"]) or
-                                         (hand_at_old_mouth and gap <= sc.get("lost_max_s", 3.0))):
+                if was_near and gap <= sc["lost_hold_s"]:
                     lost_near = True
-                    if gap <= sc["lost_hold_s"]:
-                        d = self.last_d   # hold last state so the temporal rule keeps counting
             if d is None:
                 self.filter.reset(); self.speed_filter.reset()
                 self.prev_d = None
@@ -133,7 +130,9 @@ class AlertProcessor:
             if self.obj is not None and t - self.obj[0] <= 1.0:
                 p_unsafe = self.obj[2] if self.c.calibration else self.obj[1]
                 obj_class = self.obj[3]
-                conf = max(p_unsafe, 1 - p_unsafe)
+                conf = self.obj[4]
+                if _isnan(conf):  # legacy binary feature logs have no category confidence
+                    conf = max(p_unsafe, 1 - p_unsafe)
                 if conf < self.cfg["calibration"]["reject_threshold"]:
                     status = "uncertain"
                 else:
@@ -145,7 +144,7 @@ class AlertProcessor:
         level, reason = NORMAL, ""
         if near:
             if status == "unsafe" and p_unsafe >= rc["p_unsafe_danger"] and dwell >= rc["dwell_danger_s"]:
-                level, reason = DANGER, "unsafe object at mouth"
+                level, reason = DANGER, "unsafe object near mouth in image"
             elif status in ("unsafe", "uncertain", "none"):
                 level, reason = CAUTION, f"{status} object near mouth"
             elif status == "safe" and dwell >= rc["dwell_safe_caution_s"]:
@@ -156,16 +155,16 @@ class AlertProcessor:
         if lost_near and level < CAUTION:
             level, reason = CAUTION, "mouth hidden by hand"
 
-        # cooldown: after a danger episode ends, a new one within cooldown_s is shown as caution
+        # Cooldown suppresses repeat notifications, never the displayed risk.
+        notify = False
         if level == DANGER:
-            if not self.danger_on and self.c.cooldown and t < self.danger_block_until:
-                level, reason = CAUTION, reason + " (cooldown)"
-            else:
-                self.danger_on = True
+            notify = not self.danger_on and (not self.c.cooldown or t >= self.danger_block_until)
+            self.danger_on = True
         elif self.danger_on:
             self.danger_on = False
             self.danger_block_until = t + tc["cooldown_s"]
 
         return {"t": t, "level": level, "reason": reason, "d_raw": d_raw, "d": d if d is not None else math.nan,
                 "speed": speed, "ttc": ttc, "near_frame": near_frame, "near": near, "dwell": dwell,
-                "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near}
+                "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
+                "notify": notify}
