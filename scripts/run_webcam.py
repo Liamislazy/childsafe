@@ -42,7 +42,8 @@ def draw(frame, lm, out, fps):
     lvl = out["level"]
     color = COLORS[lvl] if lvl or out.get('green') else (100, 100, 100)
     cv2.rectangle(frame, (0, 0), (w, 44), color, -1)
-    txt = f"{LEVEL_NAMES[lvl].upper()} / {out.get('observation', 'degraded')}  {out['reason']}"
+    calibration = ' [UNCALIBRATED]' if not out.get('calibrated', False) else ''
+    txt = f"{LEVEL_NAMES[lvl].upper()} / {out.get('observation', 'degraded')}{calibration}"
     cv2.putText(frame, txt, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2, cv2.LINE_AA)
     d = out["d"]
     info = (f"d={d:.2f} " if not math.isnan(d) else "d=-- ") + \
@@ -50,6 +51,8 @@ def draw(frame, lm, out, fps):
            (f"({out['obj_class']} p={out['p_unsafe']:.2f})" if not math.isnan(out['p_unsafe']) else "") + \
            f" fps={fps:.0f}"
     cv2.putText(frame, info, (10, h - 12), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 2, cv2.LINE_AA)
+    reasons = out.get('observation_reasons',[]) or [out.get('reason','')]
+    cv2.putText(frame,'; '.join(reasons)[:120],(10, h-35),cv2.FONT_HERSHEY_SIMPLEX,.45,(255,255,255),1)
     return frame
 
 
@@ -98,8 +101,10 @@ def main():
                 if last_frame is not None:
                     t = now-t0
                     lm,row,out = pipe.process(cv2.cvtColor(last_frame,cv2.COLOR_BGR2RGB),t,
-                                              frame_valid=False,source_ok=False)
+                                              frame_valid=False,source_ok=packet is None)
                     logger.update(out)
+                    if args.log_features:
+                        feats.extend({**f,'condition':args.condition} for f in out['feature_rows'])
                     cv2.imshow('childsafe',draw(last_frame.copy(),lm,out,fps))
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
@@ -110,7 +115,9 @@ def main():
                     _,_,ended = pipe.process(cv2.cvtColor(last_frame,cv2.COLOR_BGR2RGB),now-t0,
                                              frame_valid=False,source_ok=False)
                     logger.update(ended)
-                pipe.reset(packet.session_id)
+                    if args.log_features:
+                        feats.extend({**f,'condition':args.condition} for f in ended['feature_rows'])
+                pipe.reset()
                 session_id = packet.session_id
                 disconnected = False
             frame = packet.frame

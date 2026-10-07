@@ -29,7 +29,7 @@ def replay(features: pd.DataFrame, cfg: dict, components: Components | None = No
             except (SyntaxError,ValueError):
                 f['quality_reasons'] = ['invalid quality reasons']
         for name in ('mouth_visible','source_ok','frame_valid','association_ambiguous','detector_ok',
-                     'classifier_ok','calibrated','object_coverage','proximity_evidence','person_left','hand_ok','face_ok','history_reset'):
+                     'classifier_ok','calibrated','object_coverage','proximity_evidence','object_present','person_left','hand_ok','face_ok','history_reset'):
             if name in f:
                 value = f[name]
                 f[name] = value is True or value == 1 or str(value).lower() == 'true'

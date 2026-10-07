@@ -147,7 +147,10 @@ class FramePipeline:
                 state['processor'].reset()
                 state['geometry'].__init__()
             f.update(object_proximity(obj,lm,f,self.cfg.get('quality',{})))
-            if not f['proximity_evidence']:
+            f['object_present'] = obj is not None
+            hand_distance = f.get('d_face_width',math.nan)
+            suspicious_hand = math.isfinite(hand_distance) and hand_distance <= self.cfg['temporal']['d_exit']
+            if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             out = state['processor'].step(f, obj_result)
             out.update(person_id=pid, box=track.box, session_id=self.session_id)
@@ -165,6 +168,12 @@ class FramePipeline:
                      face_ok=0, mouth_visible=False, frame_valid=valid, source_ok=source_ok,
                      person_left=pid in retired, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s)
+            f['object_present'] = False
+            f.update(proximity_evidence=False,mask_reliable=False,object_d_relative=math.nan,
+                     object_d_px=math.nan,detector_ok=self.detector.ok,
+                     classifier_ok=self.classifier is not None and not self.classifier_error)
+            for column in OBJ_COLUMNS:
+                f[column] = '' if column == 'obj_class' else math.nan
             out = state['processor'].step(f)
             out.update(person_id=pid, session_id=self.session_id)
             rows.append(f); outputs.append(out)

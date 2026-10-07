@@ -38,3 +38,24 @@ def test_per_person_pipeline_and_stale_frame():
     assert all(p['session_id'] == 7 for p in out['persons'])
     assert min(p['person_id'] for p in out['persons']) > 2
     pipe.close()
+
+
+def test_calibrated_complete_detector_can_show_normal_observable_when_hands_are_clear():
+    class VisibleLandmarks(FakeLandmarks):
+        def detect(self,rgb,t):
+            out = super().detect(rgb,t)
+            face = np.zeros((478,3))
+            face[234,:2] = [20,40]; face[454,:2] = [100,40]
+            face[[78,13,308,14],:2] = [[50,50],[60,45],[70,50],[60,55]]
+            face[[33,133],:2] = [40,30]; face[[362,263],:2] = [80,30]
+            out.face,out.face_matrix = face,np.eye(4)
+            out.hands = [np.column_stack((np.linspace(20,50,21),np.linspace(160,190,21),np.zeros(21)))]
+            return out
+    cfg = load_config(); cfg['quality']['calibrated'] = True
+    cfg['detector']['complete_object_coverage'] = True
+    pipe = FramePipeline(cfg,None,detector=FakeDetector(),landmark_factory=VisibleLandmarks,
+                         classifier=lambda *args: {})
+    rgb = np.random.default_rng(0).integers(40,210,(240,340,3),dtype=np.uint8)
+    _,_,out = pipe.process(rgb,0)
+    assert out['green'] and all(person['observation'] == 'observable' for person in out['persons'])
+    pipe.close()

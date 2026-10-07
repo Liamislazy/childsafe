@@ -21,3 +21,4 @@ access_token
 .env
 *.egg-info/
 .runtime-deps/
+Ultralytics/

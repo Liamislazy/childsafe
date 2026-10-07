@@ -71,6 +71,7 @@ class AlertProcessor:
         self.last_evidence_t = None
         self.last_level = NORMAL
         self.event_active = False
+        self.event_reliable = False
         self.last_step_t = None
         self.confirmed_dwell = 0.
         self.prev_confirmed = False
@@ -116,6 +117,9 @@ class AlertProcessor:
         if modern and (not f.get('classifier_ok', False) or not f.get('detector_ok', False)):
             obj = None
             self.obj = None
+        if modern and f.get('object_present') is False:
+            obj = None
+            self.obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
             self.last_classify_t = t
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
@@ -126,7 +130,7 @@ class AlertProcessor:
             d_raw = f.get('object_d_relative')
         if not visible or (modern and f.get('association_ambiguous')):
             d_raw = math.nan
-        if visible and not _isnan(d_raw):
+        if visible and not _isnan(d_raw) and (not modern or f.get('proximity_evidence',False)):
             self.last_evidence_t = t
         lost_near = False
         if _isnan(d_raw):
@@ -153,7 +157,7 @@ class AlertProcessor:
         self.prev_d, self.prev_t = (d, t) if d is not None else (None, None)
 
         near_frame = self.hyst(d if d is not None else math.nan)
-        near = self.vote(t,near_frame)
+        near = self.vote(t,near_frame and (not modern or f.get('proximity_evidence',False)))
         if near and self.near_since is None:
             self.near_since = t
         elif not near:
@@ -198,28 +202,33 @@ class AlertProcessor:
         elif (self.c.approach and d is not None and status == "unsafe" and ttc < rc["ttc_caution_s"]
               and d < self.cfg["cascade"]["d_far"]):
             level, reason = CAUTION, "unsafe object approaching"
+        if modern and near_frame and not f.get('proximity_evidence',False) and status != 'safe':
+            level,reason = CAUTION,'suspected proximity; reliable mask evidence missing'
         if lost_near and level < CAUTION:
             level, reason = CAUTION, "mouth hidden by hand"
         # Preserve recent risk, but do not accumulate dwell from held coordinates.
-        held = (self.c.lost_landmark and not visible and self.last_evidence_t is not None
+        missing_evidence = not visible or (modern and not f.get('proximity_evidence',False))
+        held = (self.c.lost_landmark and missing_evidence and self.last_evidence_t is not None
                 and f.get('source_ok', True) and not f.get('person_left',False)
                 and 0 <= t - self.last_evidence_t <= sc['lost_hold_s'])
         if held and self.last_level > level:
-            level, reason = self.last_level, 'recent evidence held; mouth not observable'
+            level, reason = self.last_level, 'recent evidence held; mouth/object not observable'
         end_reason = ''
         if self.event_active and not held:
             if not f.get('source_ok', True):
                 end_reason = 'source_disconnected'
             elif f.get('person_left', False):
                 end_reason = 'person_left_frame'
-            elif not visible or f.get('association_ambiguous', False):
+            elif not visible or f.get('association_ambiguous', False) or (self.event_reliable and missing_evidence):
                 end_reason = 'observation_lost'
             elif level == NORMAL:
                 end_reason = 'observed_departure' if not _isnan(d_raw) and d_raw > tc['d_exit'] else 'risk_changed'
         if end_reason:
             self.event_active = False
+            self.event_reliable = False
         elif level > NORMAL:
             self.event_active = True
+            self.event_reliable = self.event_reliable or (modern and f.get('proximity_evidence',False))
 
         # Cooldown suppresses repeat notifications, never the displayed risk.
         notify = False

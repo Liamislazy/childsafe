@@ -90,7 +90,7 @@ smoothing:
   one_euro_min_cutoff: 1.0
   one_euro_beta: 0.05
   lost_hold_s: 0.8          # B2: hold last state this long when the mouth landmark disappears
-  lost_max_s: 3.0           # keep 'caution' while the hand stays at the last mouth position, up to this long
+  lost_max_s: 3.0           # legacy metadata only; runtime never extends held evidence beyond lost_hold_s
 
 temporal:                   # D1
   window_s: 0.3333333333333333
@@ -98,9 +98,9 @@ temporal:                   # D1
   max_gap_s: 0.25
   d_enter: 0.35             # normalized distance to enter "near" (hysteresis: enter < exit)
   d_exit: 0.50
-  n_of_m: [3, 10]           # need N near frames among the last M
+  n_of_m: [3, 10]           # legacy metadata only; runtime uses the duration window above
   merge_s: 2.0              # merge events closer than this
-  cooldown_s: 5.0           # after a danger alert, do not raise a new one for this long
+  cooldown_s: 5.0           # limit repeat notifications; never lower displayed danger
 
 cascade:                    # D2
   enabled: true
