@@ -93,6 +93,9 @@ smoothing:
   lost_max_s: 3.0           # keep 'caution' while the hand stays at the last mouth position, up to this long
 
 temporal:                   # D1
+  window_s: 0.3333333333333333
+  required_evidence_s: 0.1
+  max_gap_s: 0.25
   d_enter: 0.35             # normalized distance to enter "near" (hysteresis: enter < exit)
   d_exit: 0.50
   n_of_m: [3, 10]           # need N near frames among the last M
@@ -103,6 +106,7 @@ cascade:                    # D2
   enabled: true
   d_far: 1.2                # run Module A only when normalized distance < d_far
   classify_every_n: 3       # and at most every N frames (cached in between)
+  classify_interval_s: 0.1
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 rules:                      # D3

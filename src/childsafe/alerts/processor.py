@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, fields
 
-from childsafe.alerts.temporal import Hysteresis, NofM
+from childsafe.alerts.temporal import Hysteresis, TimeWindow
 from childsafe.alerts.observation import observation
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
@@ -55,8 +55,8 @@ class AlertProcessor:
         self.speed_filter = EMA(0.3)
         enter = tc["d_enter"]
         self.hyst = Hysteresis(enter, tc["d_exit"] if self.c.hysteresis else enter)
-        n, m = tc["n_of_m"]
-        self.vote = NofM(n, m) if self.c.n_of_m else NofM(1, 1)
+        self.vote = TimeWindow(tc.get('window_s',10/30), tc.get('required_evidence_s',3/30)
+                               if self.c.n_of_m else 0.,tc.get('max_gap_s',.25))
         self.reset()
 
     def reset(self):
@@ -71,6 +71,10 @@ class AlertProcessor:
         self.last_evidence_t = None
         self.last_level = NORMAL
         self.event_active = False
+        self.last_step_t = None
+        self.confirmed_dwell = 0.
+        self.prev_confirmed = False
+        self.last_classify_t = None
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -83,7 +87,8 @@ class AlertProcessor:
         d = f.get(f"d_{self.norm}")
         if _isnan(d):
             d = f.get("d_last_mouth")   # face hidden: judge by last known mouth position
-        return not _isnan(d) and d < cc["d_far"] and self.frame % cc["classify_every_n"] == 0
+        return (not _isnan(d) and d < cc['d_far'] and
+                (self.last_classify_t is None or f['t']-self.last_classify_t >= cc.get('classify_interval_s',.1)-1e-9))
 
     # ---- main step --------------------------------------------------------------------
     def step(self, f: dict, obj: dict | None = None) -> dict:
@@ -91,6 +96,15 @@ class AlertProcessor:
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
+        dt = t-self.last_step_t if self.last_step_t is not None else 0.
+        gap_ok = 0 < dt <= tc.get('max_gap_s',.25)
+        if self.last_step_t is not None and not gap_ok:
+            self.filter.reset(); self.speed_filter.reset(); self.hyst.reset(); self.vote.reset()
+            self.prev_d = self.prev_t = None
+            self.confirmed_dwell = 0.
+            self.prev_confirmed = False
+            self.obj = None
+        self.last_step_t = t
         quality, quality_reasons = observation(f)
         modern = 'schema_version' in f
         valid = f.get('frame_valid', True) and f.get('source_ok', True)
@@ -98,6 +112,7 @@ class AlertProcessor:
         if modern and (not valid or f.get('association_ambiguous')):
             obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
+            self.last_classify_t = t
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
                         obj.get("obj_conf", math.nan))
 
@@ -133,12 +148,18 @@ class AlertProcessor:
         self.prev_d, self.prev_t = (d, t) if d is not None else (None, None)
 
         near_frame = self.hyst(d if d is not None else math.nan)
-        near = self.vote(near_frame)
+        near = self.vote(t,near_frame)
         if near and self.near_since is None:
             self.near_since = t
         elif not near:
             self.near_since = None
-        dwell = t - self.near_since if near else 0.0
+        confirmed = near and visible and (not modern or f.get('proximity_evidence',False))
+        if confirmed and self.prev_confirmed and gap_ok:
+            self.confirmed_dwell += dt
+        elif not confirmed:
+            self.confirmed_dwell = 0.
+        self.prev_confirmed = confirmed
+        dwell = self.confirmed_dwell
 
         # object status from the most recent classification (valid for 1 s)
         status, p_unsafe, obj_class = "none", math.nan, ""
