@@ -21,5 +21,3 @@ access_token
 .env
 *.egg-info/
 data/external/
-.runtime-deps/
-Ultralytics/

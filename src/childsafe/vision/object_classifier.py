@@ -27,9 +27,7 @@ class ObjectClassifier:
         self.model, ck = load_checkpoint(ckpt_path, self.device)
         self.classes, self.temperature = ck["classes"], ck["temperature"]
         self.unsafe = np.array([ck["binary_map"][c] == "unsafe" for c in self.classes])
-        self.unknown = np.array([ck["binary_map"][c] == "unknown" or c in ("other", "unknown", "empty_hand")
-                                 for c in self.classes])
-        self.tf = eval_transform(ck["img_size"], preprocessing=ck.get("preprocessing", "center_crop"))
+        self.tf = eval_transform(ck["img_size"])
 
     @torch.no_grad()
     def __call__(self, rgb: np.ndarray, box=None) -> dict:
@@ -41,5 +39,4 @@ class ObjectClassifier:
         top = np.argsort(-cal)[:3]
         return {"p_unsafe_raw": float(raw[self.unsafe].sum()), "p_unsafe_cal": float(cal[self.unsafe].sum()),
                 "obj_class": self.classes[k], "obj_conf": float(cal[k]),
-                "top3": [(self.classes[i], float(cal[i])) for i in top],
-                "p_unknown_cal": float(cal[self.unknown].sum())}
+                "top3": [(self.classes[i], float(cal[i])) for i in top]}

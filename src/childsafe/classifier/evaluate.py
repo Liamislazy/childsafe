@@ -30,19 +30,19 @@ from childsafe.data.dataset import MEAN, STD, eval_transform, image_paths
 _CACHE: dict = {}
 
 
-def _cached_images(df, root, size, preprocessing="center_crop"):
+def _cached_images(df, root, size):
     """Decode + resize + center-crop once; corruption passes reuse these (no DataLoader worker re-spawn,
     which costs tens of seconds per pass on Windows)."""
-    key = (str(root), tuple(df["path"]), tuple(df["source"]) if "source" in df else (), size, preprocessing)
+    key = (str(root), tuple(df["path"]), tuple(df["source"]) if "source" in df else (), size)
     if key not in _CACHE:
-        tf = T.Compose(eval_transform(size, preprocessing=preprocessing).transforms[:-2])
-        _CACHE[key] = [tf(Image.open(p).convert("RGB")) for p in image_paths(df, root)]
+        tf = eval_transform(size).transforms[:2]
+        _CACHE[key] = [tf[1](tf[0](Image.open(p).convert("RGB"))) for p in image_paths(df, root)]
     return _CACHE[key]
 
 
 def _eval_df(model, ckpt, df, root, device, cfg, corruption=None, plot_prefix=None, title=""):
     size = ckpt["img_size"]
-    imgs = _cached_images(df, root, size, ckpt.get("preprocessing", "center_crop"))
+    imgs = _cached_images(df, root, size)
     tail = T.Compose(([FixedCorruption(*corruption)] if corruption and corruption[1] > 0 else [])
                      + [T.ToTensor(), T.Normalize(MEAN, STD)])
     idx = {c: i for i, c in enumerate(ckpt["classes"])}
@@ -83,14 +83,12 @@ def main(argv=None):
     ap.add_argument("--ood", default=None, help="out-of-domain image folder (A2)")
     ap.add_argument("--corruptions", action="store_true", help="A5 degradation curves on the test split")
     ap.add_argument("--config", default=None)
-    ap.add_argument("--manifest", default=None, help="Expanded split manifest used to train the checkpoint")
     args = ap.parse_args(argv)
 
     cfg = load_config(args.config)
     run = Path(args.run)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, ckpt = load_checkpoint(run / "best.pt", device)
-    cfg["label_map"] = {**cfg["label_map"], **ckpt["binary_map"]}
     split_col = f"split_{ckpt.get('split', 'group')}"
     report: dict = {"run": run.name}
 
@@ -112,7 +110,7 @@ def main(argv=None):
         report["ood"] = _eval_df(model, ckpt, ood, args.ood, device, cfg, plot_prefix=run / "ood", title="OOD")
         report["ood_by_condition"] = {c: _eval_df(model, ckpt, g, args.ood, device, cfg)
                                       for c, g in ood.groupby("condition")} if ood["condition"].nunique() > 1 else {}
-        test = pd.read_csv(args.manifest or cfg["paths"]["splits"])
+        test = pd.read_csv(cfg["paths"]["splits"])
         test = test[test[split_col] == "test"]
         ind = _eval_df(model, ckpt, test, source_roots(cfg), device, cfg)
         report["in_domain_test"] = ind
@@ -123,7 +121,7 @@ def main(argv=None):
               f"ECE(cal) {ind['ece_calibrated']:.4f} -> {report['ood']['ece_calibrated']:.4f}")
 
     if args.corruptions:
-        test = pd.read_csv(args.manifest or cfg["paths"]["splits"])
+        test = pd.read_csv(cfg["paths"]["splits"])
         test = test[test[split_col] == "test"]
         curves = {}
         for kind in KINDS:
