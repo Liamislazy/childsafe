@@ -43,14 +43,14 @@ def main():
             ok, frame = cap.read()
             if not ok:
                 break
-            _, row, _ = pipe.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), i / fps)
-            rows.append({**row, "video": v.stem, "fps": fps})
+            _, row, out = pipe.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), i / fps)
+            rows.extend({**f, 'video': v.stem, 'fps': fps} for f in out['feature_rows'])
             i += 1
         cap.release()
         pipe.close()
         dest = out_dir / f"{v.stem}.csv"
         pd.DataFrame(rows).to_csv(dest, index=False)
-        print(f"{v.name}: {i} frames, face {pd.DataFrame(rows).face_ok.mean():.1%}, hand {pd.DataFrame(rows).hand_ok.mean():.1%} -> {dest}")
+        print(f"{v.name}: {i} frames, {len(rows)} person observations -> {dest}")
 
 
 if __name__ == "__main__":

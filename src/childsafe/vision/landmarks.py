@@ -22,6 +22,7 @@ class FrameLandmarks:
     face: np.ndarray | None = None                        # (478, 3)
     hands: list[np.ndarray] = field(default_factory=list)  # each (21, 3)
     handedness: list[str] = field(default_factory=list)
+    face_matrix: np.ndarray | None = None
 
 
 class LandmarkDetector:
@@ -30,7 +31,8 @@ class LandmarkDetector:
         video = mpv.RunningMode.VIDEO
         self.face = mpv.FaceLandmarker.create_from_options(mpv.FaceLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=face_model), running_mode=video, num_faces=1,
-            min_face_detection_confidence=min_face_conf, min_face_presence_confidence=min_face_conf))
+            min_face_detection_confidence=min_face_conf, min_face_presence_confidence=min_face_conf,
+            output_facial_transformation_matrixes=True))
         self.hand = mpv.HandLandmarker.create_from_options(mpv.HandLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=hand_model), running_mode=video, num_hands=num_hands,
             min_hand_detection_confidence=min_hand_conf, min_hand_presence_confidence=min_hand_conf))
@@ -48,6 +50,8 @@ class LandmarkDetector:
         out = FrameLandmarks(t=t, width=w, height=h)
         if fr.face_landmarks:
             out.face = np.array([[p.x, p.y, p.z] for p in fr.face_landmarks[0]], np.float32) * scale
+            if fr.facial_transformation_matrixes:
+                out.face_matrix = np.asarray(fr.facial_transformation_matrixes[0])
         for lm, hd in zip(hr.hand_landmarks, hr.handedness):
             out.hands.append(np.array([[p.x, p.y, p.z] for p in lm], np.float32) * scale)
             out.handedness.append(hd[0].category_name if hd else "")

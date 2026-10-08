@@ -87,12 +87,12 @@ def test_lost_mouth_near_hand_is_caution():
     assert not out2["lost_near"]
 
 
-def test_cooldown_downgrades_quick_repeat():
+def test_cooldown_suppresses_notification_not_risk():
     p = AlertProcessor(cfg())
     seq = [0.1] * 60 + [1.0] * 30 + [0.1] * 60     # danger, leave for 1 s, come back
     levels = [o["level"] for o in run(p, seq, UNSAFE)]
     assert DANGER in levels[:60]
-    assert DANGER not in levels[90:]                 # within 5 s cooldown -> caution
+    assert DANGER in levels[90:]
     p2 = AlertProcessor(cfg(), Components.from_off(["cooldown"]))
     levels2 = [o["level"] for o in run(p2, seq, UNSAFE)]
     assert DANGER in levels2[90:]

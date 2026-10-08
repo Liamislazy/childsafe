@@ -9,6 +9,7 @@ Outputs go to outputs/runs/<arch>_<split>[_robust]/.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import sys
@@ -44,6 +45,9 @@ def main(argv=None):
     ap.add_argument("--no-pretrained", action="store_true")
     ap.add_argument("--seed", type=int, default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--manifest", help="Reviewed expanded manifest with train/val/cal/test in split_group")
+    ap.add_argument("--balanced", action="store_true", help="Inverse-square-root training class weights")
+    ap.add_argument("--preprocessing", choices=["center_crop", "letterbox"], default="center_crop")
     args = ap.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # progress visible when redirected to a log
 
@@ -56,11 +60,22 @@ def main(argv=None):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     amp = tc["amp"] and device.type == "cuda"
 
-    df = pd.read_csv(cfg["paths"]["splits"])
+    df = pd.read_csv(args.manifest or cfg["paths"]["splits"])
     col = f"split_{args.split}"
     classes = sorted(df["category"].unique())
     binary_map = dict(df[["category", "label"]].drop_duplicates().values)
-    root = source_roots(cfg)   # ChildSUn + any extra sources
+    if df.groupby("category")["label"].nunique().max() != 1:
+        raise ValueError("Conflicting category risk labels")
+    if args.manifest:
+        if args.split != "group" or not set(df[col]).issubset({"train", "val", "cal", "test"}):
+            raise ValueError("Expanded training requires group split with train/val/cal/test")
+        if df.groupby("group")[col].nunique().max() != 1:
+            raise ValueError("Source group leakage across partitions")
+        for part in ("train", "val", "cal", "test"):
+            missing = set(classes) - set(df.loc[df[col] == part, "category"])
+            if missing:
+                raise ValueError(f"{part} missing classes: {sorted(missing)}; collect more independent sources")
+    root = source_roots(cfg)   # ChildSUn + any extra sources (paths may also be absolute, e.g. --manifest)
     size = tc["img_size"]
 
     def loader(part, tf, shuffle):
@@ -75,13 +90,21 @@ def main(argv=None):
                           num_workers=tc["num_workers"], pin_memory=device.type == "cuda",
                           persistent_workers=tc["num_workers"] > 0, drop_last=shuffle and len(ds) > bs)
 
-    train_dl = loader("train", train_transform(size, args.robust), True)
-    val_dl = loader("val", eval_transform(size), False)
-    test_dl = loader("test", eval_transform(size), False)
+    eval_tf = eval_transform(size, preprocessing=args.preprocessing)
+    train_dl = loader("train", train_transform(size, args.robust, args.preprocessing), True)
+    val_dl = loader("val", eval_tf, False)
+    cal_dl = loader("cal", eval_tf, False) if args.manifest else val_dl
+    test_dl = loader("test", eval_tf, False)
 
     run_name = f"{args.arch}_{args.split}" + ("_robust" if args.robust else "")
     out = Path(args.out or Path(cfg["paths"]["outputs"]) / "runs" / run_name)
     out.mkdir(parents=True, exist_ok=True)
+    if args.manifest:
+        df.to_csv(out / "training_manifest.csv", index=False)
+    provenance = {"arguments": vars(args), "seed": seed, "config": cfg,
+                  "manifest_sha256": hashlib.sha256(Path(args.manifest or cfg["paths"]["splits"]).read_bytes()).hexdigest(),
+                  "partition_counts": df.groupby(col).size().to_dict()}
+    (out / "run_config.json").write_text(json.dumps(provenance, indent=2, default=str), encoding="utf-8")
 
     lr = tc.get("lr_overrides", {}).get(args.arch, tc["lr"])
     print(f"[{run_name}] lr={lr} epochs={epochs} batch={bs}", flush=True)
@@ -90,7 +113,12 @@ def main(argv=None):
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=lr, total_steps=epochs * len(train_dl),
                                                 pct_start=0.1)
     scaler = torch.amp.GradScaler(enabled=amp)
-    crit = nn.CrossEntropyLoss()
+    weights = None
+    if args.balanced:
+        counts = df[df[col] == "train"].category.value_counts().reindex(classes).to_numpy()
+        weights = torch.tensor(1 / np.sqrt(counts), dtype=torch.float32, device=device)
+        weights /= weights.mean()
+    crit = nn.CrossEntropyLoss(weight=weights)
 
     best_f1, best_epoch, history = -1.0, -1, []
     for epoch in range(epochs):
@@ -114,7 +142,8 @@ def main(argv=None):
         print(json.dumps(history[-1]), flush=True)
         if vm["macro_f1"] > best_f1:
             best_f1, best_epoch = vm["macro_f1"], epoch
-            save_checkpoint(out / "best.pt", model, args.arch, classes, binary_map, size)
+            save_checkpoint(out / "best.pt", model, args.arch, classes, binary_map, size,
+                            preprocessing=args.preprocessing)
         elif epoch - best_epoch >= tc["patience"]:
             print(f"early stop at epoch {epoch} (best {best_epoch})")
             break
@@ -122,12 +151,15 @@ def main(argv=None):
     # Reload best, calibrate on val, evaluate on test.
     model.load_state_dict(torch.load(out / "best.pt", weights_only=False)["state_dict"])
     vl, vy = run_inference(model, val_dl, device, amp)
-    temp = fit_temperature(vl, vy)
+    cl, cy = run_inference(model, cal_dl, device, amp)
+    temp = fit_temperature(cl, cy)
     save_checkpoint(out / "best.pt", model, args.arch, classes, binary_map, size, temperature=temp,
-                    split=args.split, robust=args.robust, best_epoch=best_epoch)
+                    split=args.split, robust=args.robust, best_epoch=best_epoch,
+                    preprocessing=args.preprocessing, balanced=args.balanced,
+                    calibration_partition="cal" if args.manifest else "val")
     tl, ty = run_inference(model, test_dl, device, amp)
     np.savez(out / "logits.npz", val_logits=vl, val_targets=vy, test_logits=tl, test_targets=ty,
-             classes=np.array(classes))
+             cal_logits=cl, cal_targets=cy, classes=np.array(classes))
     rc = cfg["calibration"]
     metrics = {
         "arch": args.arch, "split": args.split, "robust": args.robust, "best_epoch": best_epoch,
@@ -135,6 +167,13 @@ def main(argv=None):
         "test": summarize(tl, ty, classes, binary_map, temp, rc["reject_threshold"], rc["n_bins"],
                           plot_prefix=out / "test", title=f"{run_name} test"),
         "history": history,
+        "preprocessing": args.preprocessing, "balanced": args.balanced,
+        "calibration_partition": "cal" if args.manifest else "val",
+        "test_by_domain": {str(domain): summarize(tl[mask], ty[mask], classes, binary_map, temp,
+                                  rc["reject_threshold"], rc["n_bins"])
+                           for domain in df.loc[df[col] == "test", "domain"].unique()
+                           for mask in [(df.loc[df[col] == "test", "domain"].to_numpy() == domain)]}
+                          if "domain" in df else {},
     }
     (out / "metrics.json").write_text(json.dumps(metrics, indent=2))
     t = metrics["test"]
