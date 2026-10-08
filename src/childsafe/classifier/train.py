@@ -26,11 +26,19 @@ from childsafe.classifier.calibration import fit_temperature
 from childsafe.classifier.engine import run_inference, summarize
 from childsafe.classifier.models import create_model, save_checkpoint
 from childsafe.config import load_config
+from childsafe.data.catalog import source_roots
 from childsafe.data.dataset import CatalogDataset, eval_transform, train_transform
 
 
 def seed_everything(seed: int):
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
+
+
+def class_balanced_sampler(targets, num_classes, balance):
+    if balance != 'sqrt':
+        return None
+    counts = torch.bincount(targets,minlength=num_classes).float().clamp(min=1)
+    return torch.utils.data.WeightedRandomSampler(counts.rsqrt()[targets],len(targets),replacement=True)
 
 
 def main(argv=None):
@@ -74,14 +82,15 @@ def main(argv=None):
             missing = set(classes) - set(df.loc[df[col] == part, "category"])
             if missing:
                 raise ValueError(f"{part} missing classes: {sorted(missing)}; collect more independent sources")
-    root = cfg["paths"]["raw_data"]
+    root = source_roots(cfg)   # ChildSUn + any extra sources
     size = tc["img_size"]
 
     def loader(part, tf, shuffle):
         ds = CatalogDataset(df[df[col] == part], root, classes, tf)
-        return DataLoader(ds, batch_size=bs, shuffle=shuffle, num_workers=tc["num_workers"],
-                          pin_memory=device.type == "cuda", persistent_workers=tc["num_workers"] > 0,
-                          drop_last=shuffle and len(ds) > bs)
+        sampler = class_balanced_sampler(ds.targets,len(classes),tc.get('balance')) if shuffle else None
+        return DataLoader(ds, batch_size=bs, shuffle=shuffle and sampler is None, sampler=sampler,
+                          num_workers=tc["num_workers"], pin_memory=device.type == "cuda",
+                          persistent_workers=tc["num_workers"] > 0, drop_last=shuffle and len(ds) > bs)
 
     eval_tf = eval_transform(size, preprocessing=args.preprocessing)
     train_dl = loader("train", train_transform(size, args.robust, args.preprocessing), True)

@@ -1,0 +1,16 @@
+# Extension experiment (not the main ChildSUn-only result): ChildSUn + Open Images V7 *validation* crops,
+# including an 11th class "other" (pen, phone, mug, hand, ...). Open Images *test* crops are never trained on;
+# they are the out-of-domain test set (data/external/openimages/test).
+#   python scripts/fetch_openimages.py
+#   python scripts/make_splits.py --config configs/with_other.yaml
+#   python -m childsafe.classifier.train --arch efficientnet_b0 --split group --robust --config configs/with_other.yaml
+_base_: default.yaml
+paths:
+  splits: data/splits/splits_with_other.csv
+  hashes: data/splits/hashes_with_other.npz
+  outputs: outputs/with_other
+  docs: docs/with_other
+split:
+  base_splits: data/splits/splits.csv   # ChildSUn rows keep the canonical split (checksum 42e3fb2547c5)
+extra_sources:
+  openimages: data/external/openimages/validation

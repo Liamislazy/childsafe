@@ -69,6 +69,8 @@ def summarize(logits: np.ndarray, targets: np.ndarray, classes: list[str], binar
         # A3 reject option: low calibrated confidence -> "uncertain" (caution), not a hard label.
         b_conf = np.maximum(p_unsafe, 1 - p_unsafe)
         keep = (b_conf >= reject_threshold) & (p.max(1) >= reject_threshold)
+        unknown = np.array([binary_map[c] == 'unknown' or c in ('other','unknown','empty_hand') for c in classes])
+        keep &= ~unknown[pred] & (p[:,unknown].sum(1) < .5)
         res["reject"] = {
             "threshold": reject_threshold,
             "coverage": float(keep.mean()),

@@ -33,6 +33,9 @@ label_map:
   fruit: safe
   fruits: safe
   spoon: safe
+  # objects outside the 10 ChildSUn classes (Open Images pen, phone, mug, hand...). "safe" here only means
+  # "not an unsafe class" for P(unsafe); it is not a safety claim (a pen cap is a choking hazard).
+  other: safe
   # if the dataset is already organised as safe/ and unsafe/ folders:
   safe: safe
   unsafe: unsafe

@@ -16,11 +16,24 @@ from sklearn.model_selection import train_test_split
 PARTS = ("train", "val", "test")
 
 
+def _strata(y: np.ndarray, min_count: int = 3) -> np.ndarray:
+    """Stratification labels; classes too small to stratify are pooled (sklearn needs >= 2 per class)."""
+    y = np.asarray(y, dtype=object)
+    vals, counts = np.unique(y, return_counts=True)
+    rare = set(vals[counts < min_count])
+    if not rare:
+        return y
+    s = np.array(["__rare__" if v in rare else v for v in y], dtype=object)
+    if (s == "__rare__").sum() < min_count:
+        s[s == "__rare__"] = vals[counts.argmax()]
+    return s
+
+
 def random_split(y: np.ndarray, test_frac: float, val_frac: float, seed: int) -> np.ndarray:
     idx = np.arange(len(y))
-    trval, test = train_test_split(idx, test_size=test_frac, stratify=y, random_state=seed)
+    trval, test = train_test_split(idx, test_size=test_frac, stratify=_strata(y), random_state=seed)
     train, val = train_test_split(trval, test_size=val_frac / (1 - test_frac),
-                                  stratify=y[trval], random_state=seed)
+                                  stratify=_strata(np.asarray(y)[trval]), random_state=seed)
     out = np.empty(len(y), dtype=object)
     out[train], out[val], out[test] = "train", "val", "test"
     return out
