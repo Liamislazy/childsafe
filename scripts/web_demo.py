@@ -16,8 +16,9 @@ from childsafe.web.app import Demo, create_app
 RUNS = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs"
 DEFAULT = {"standard": RUNS / "efficientnet_b0_group" / "best.pt",
            "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt",
-           "robust + other (Open Images)": ROOT / "outputs" / "with_other" / "runs" / "efficientnet_b0_group_robust" / "best.pt",
-           "robust + other (102 OI classes)": ROOT / "outputs" / "with_other_train" / "runs" / "efficientnet_b0_group_robust" / "best.pt"}
+           "robust + other (Open Images)": ROOT / "outputs" / "with_other" / "runs" / "efficientnet_b0_group_robust" / "best.pt"}
+# The 102-class Open Images model is not shown by default; add it with
+#   --model "robust + other (102 OI classes)=outputs/with_other_train/runs/efficientnet_b0_group_robust/best.pt"
 
 
 def main():
