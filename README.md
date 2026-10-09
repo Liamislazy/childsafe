@@ -3,11 +3,13 @@
 *Hệ thống cảnh báo đồ vật nguy hiểm cho trẻ nhỏ dựa trên thị giác máy tính: kết hợp phân loại đồ vật an toàn/không an toàn và giám sát khoảng cách tới miệng theo thời gian thực.*
 
 - **Module A**: safe/unsafe object classifier trained on ChildSUn (EfficientNet-B0, MobileNetV3, VGG19-BN baseline), with a leak-free group split, temperature scaling and Grad-CAM.
-- **Module B**: one webcam + MediaPipe Face/Hand Landmarker. Hand-to-mouth distance is normalized by face width (a **relative** distance), then smoothed.
-- **Rule layer**: N-of-M + hysteresis temporal rule, cascade gating and an alert matrix, giving normal / caution / danger.
+- **Runtime**: one webcam/video URL, local YOLO11n segmentation, up to four temporary person IDs, MediaPipe on original-image person crops, and separate alert histories.
+- **Rule layer**: duration window + hysteresis, visible object-mask proximity and normal / caution / danger, independently observable / degraded / unobservable. Cooldown limits notifications.
 - **Evaluation**: false alarms per hour, event recall, latency, compared with a per-frame distance-only baseline, plus ablations.
 
 Background, scope and the literature notes are in [docs/handoff.md](docs/handoff.md). Ethics rules are in [docs/ethics.md](docs/ethics.md).
+
+For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Large dataset downloads and pen/coin detector training remain paused.
 
 ## Setup (Windows, local GPU)
 
@@ -59,7 +61,7 @@ tests/                      pytest (python -m pytest)
 ## Design notes
 
 - **Live and offline use the same code.** `AlertProcessor` runs both in the webcam app and on logged feature CSVs. Tuning (D3) and ablation (E4, `Components`) therefore run on numbers only, without re-processing video.
-- **Offline extraction classifies every hand frame.** The cascade (D2) is then applied during replay, so it can be switched off in the ablation.
-- **Lost mouth landmark counts as a signal (B2).** If the face disappears while the hand was near it, or while the hand stays at the last known mouth position, the level goes to caution.
+- **Offline extraction classifies detected object crops.** Schema v2 logs geometry and quality per person; replay consumes the same observations. Legacy CSVs retain a single-person compatibility mode with unknown observation coverage. Frame/hand classification options from older scripts do not fabricate object positions.
+- **Lost mouth landmarks preserve recent risk for at most 0.8 seconds.** Held coordinates never accumulate proximity dwell. Events end with explicit departure, observation-loss, person-exit or disconnect reasons.
 - **Safe objects cap at caution.** Low calibrated confidence becomes "uncertain", which also gives caution.
-- **Known limitations.** The distance is a 2D relative measure (depth ambiguity). The classifier sees a hand crop, and ChildSUn has no "empty hand" class. The landmark models were trained on adults.
+- **Known limitations.** Image proximity does not establish physical contact or insertion. A box or hand near the head cannot confirm danger. Pretrained YOLO11n-seg does not locate pens/coins. Elevated thresholds and actual multi-person webcam performance remain unvalidated; this is not ready for real deployment.

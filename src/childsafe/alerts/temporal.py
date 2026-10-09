@@ -41,6 +41,35 @@ class NofM:
         self.buf.clear()
 
 
+class TimeWindow:
+    """Integrate observed true-to-true intervals, never bridge a long frame gap."""
+    def __init__(self, window_s=10/30, required_s=3/30, max_gap_s=.25):
+        if not 0 <= required_s <= window_s or max_gap_s <= 0:
+            raise ValueError('invalid temporal duration')
+        self.window_s,self.required_s,self.max_gap_s = window_s,required_s,max_gap_s
+        self.reset()
+
+    def reset(self):
+        self.intervals = deque()
+        self.prev_t = None
+        self.prev_active = False
+        self.evidence_s = 0.
+
+    def __call__(self, t, active):
+        if self.prev_t is not None:
+            dt = t-self.prev_t
+            if dt <= 0 or dt > self.max_gap_s:
+                self.reset()
+            elif active and self.prev_active:
+                self.intervals.append((self.prev_t,t))
+        cutoff = t-self.window_s
+        while self.intervals and self.intervals[0][1] <= cutoff:
+            self.intervals.popleft()
+        self.evidence_s = sum(end-max(start,cutoff) for start,end in self.intervals)
+        self.prev_t,self.prev_active = t,bool(active)
+        return bool(active) and self.evidence_s+1e-9 >= self.required_s
+
+
 def frames_to_events(t: np.ndarray, active: np.ndarray, merge_s: float = 0.0) -> list[tuple[float, float]]:
     """Turn a per-frame boolean series into (start, end) events; gaps shorter than merge_s are bridged."""
     t = np.asarray(t, float)

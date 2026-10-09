@@ -23,6 +23,7 @@ from childsafe.alerts.processor import CAUTION, DANGER, Components
 from childsafe.config import DEFAULT_CONFIG, ROOT, load_config
 from childsafe.evaluation.events import distance_only_levels, event_metrics, pool
 from childsafe.evaluation.replay import replay
+from childsafe.evaluation.report import recording_report
 
 ABLATIONS = ["smoothing", "hysteresis", "n_of_m", "cascade", "object_gate", "calibration",
              "lost_landmark", "approach", "cooldown"]
@@ -50,10 +51,7 @@ def load_data(args, cfg):
 def evaluate_system(data, cfg, components=None, min_level=DANGER, tol=2.0):
     res = []
     for v, feats, gt in data:
-        out = replay(feats, cfg, components)
-        dur = feats["t"].iloc[-1] - feats["t"].iloc[0] + 1 / feats["fps"].iloc[0] if "fps" in feats else None
-        res.append(event_metrics(out["t"].to_numpy(), out["level"].to_numpy(), gt, dur, min_level, tol,
-                                 cfg["temporal"]["merge_s"]))
+        res.append(recording_report(feats,gt,cfg,components,min_level,tol))
     return pool(res)
 
 
@@ -62,9 +60,24 @@ def evaluate_baseline(data, cfg, threshold, tol=2.0):
     norm = cfg["landmarks"]["normalizer"]
     res = []
     for v, feats, gt in data:
-        lv = distance_only_levels(feats[f"d_{norm}"].to_numpy(), threshold)
-        dur = feats["t"].iloc[-1] - feats["t"].iloc[0] + 1 / feats["fps"].iloc[0] if "fps" in feats else None
-        res.append(event_metrics(feats["t"].to_numpy(), lv, gt, dur, DANGER, tol, merge_s=0.0))
+        f = feats.copy()
+        f['baseline_level'] = distance_only_levels(f[f'd_{norm}'].to_numpy(),threshold)
+        if 'session_id' not in f: f['session_id'] = 0
+        if 'person_id' not in f: f['person_id'] = 0
+        if f.session_id.nunique() > 1 and 'session_id' not in gt:
+            raise ValueError('annotations need session_id for reconnects')
+        for session,part in f.groupby('session_id',sort=False):
+            ann = gt[gt.session_id == session] if 'session_id' in gt else gt
+            dur = part.t.max()-part.t.min()
+            if 'person_id' in ann:
+                ids = set(part.person_id)|set(ann.person_id)
+                groups = [(part[part.person_id == pid],ann[ann.person_id == pid]) for pid in ids if pid != 0]
+            else:
+                groups = [(part.groupby('t',sort=False).baseline_level.max().reset_index(),ann)]
+            for group,labels in groups:
+                times = group.t.to_numpy() if len(group) else part.t.unique()
+                levels = group.baseline_level.to_numpy() if len(group) else np.zeros(len(times),int)
+                res.append(event_metrics(times,levels,labels,dur,DANGER,tol,merge_s=0.))
     return pool(res)
 
 
@@ -79,7 +92,13 @@ HEADER = ["| system | event recall | false alarms / h | latency median (s) | lat
 
 def cmd_report(args, cfg, data):
     lines = [f"# Alert evaluation ({args.split} split, tolerance {args.tol}s)\n",
-             f"Videos: {len(data)}. Hours: {sum(len(f) / f['fps'].iloc[0] for _, f, _ in data) / 3600:.2f}\n"]
+             f"Videos: {len(data)}. Hours: {sum(f.t.max()-f.t.min() for _, f, _ in data) / 3600:.2f}\n"]
+    for v,feats,gt in data:
+        metrics = recording_report(feats,gt,cfg,tol=args.tol)
+        lines.append(f"\n{v}: coverage={metrics['observation_coverage']}; {metrics['observation_note']}; "
+                     f"FPS={metrics['fps']}; observed event recall={metrics['observed_event_recall']}; "
+                     f"annotation scope={metrics['annotation_scope']}. Internal inference p50/p90="
+                     f"{metrics.get('inference_median_s')}/{metrics.get('inference_p90_s')} s.")
     for lvl, name in ((DANGER, "danger"), (CAUTION, "caution or danger")):
         lines += [f"\n## Alerts at level: {name}\n"] + HEADER
         lines.append(_row("full system", evaluate_system(data, cfg, None, lvl, args.tol)))
@@ -127,15 +146,15 @@ def cmd_tradeoff(args, cfg, data):
 
 
 def cmd_grid(args, cfg, data):
-    if args.split == "test":
-        raise SystemExit("do not tune on the test split")
+    if args.split != 'dev':
+        raise SystemExit('tune only on dev split')
     grid = {"d_enter": [0.25, 0.3, 0.35, 0.4, 0.5], "n": [2, 3, 5], "p_unsafe_danger": [0.5, 0.6, 0.7, 0.8],
             "dwell_danger_s": [0.0, 0.3, 0.5, 1.0]}
     gap = cfg["temporal"]["d_exit"] - cfg["temporal"]["d_enter"]
     results = []
     for d_enter, n, p, dwell in itertools.product(*grid.values()):
         c = copy.deepcopy(cfg)
-        c["temporal"].update(d_enter=d_enter, d_exit=d_enter + gap, n_of_m=[n, cfg["temporal"]["n_of_m"][1]])
+        c['temporal'].update(d_enter=d_enter,d_exit=d_enter+gap,required_evidence_s=n/30)
         c["rules"].update(p_unsafe_danger=p, dwell_danger_s=dwell)
         m = evaluate_system(data, c, None, DANGER, args.tol)
         results.append({"d_enter": d_enter, "n": n, "p_unsafe_danger": p, "dwell_danger_s": dwell,
@@ -152,7 +171,7 @@ def cmd_grid(args, cfg, data):
     print("best:", best.to_dict())
     tuned = {"_base_": Path(args.config).resolve().as_posix() if args.config else DEFAULT_CONFIG.as_posix(),
              "temporal": {"d_enter": float(best.d_enter), "d_exit": float(best.d_enter + gap),
-                          "n_of_m": [int(best.n), cfg["temporal"]["n_of_m"][1]]},
+                          'required_evidence_s': float(best.n)/30},
              "rules": {"p_unsafe_danger": float(best.p_unsafe_danger), "dwell_danger_s": float(best.dwell_danger_s)}}
     out = Path(cfg["paths"]["outputs"]) / "tuned_config.yaml"
     out.write_text(yaml.safe_dump(tuned), encoding="utf-8")
