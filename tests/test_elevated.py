@@ -59,3 +59,21 @@ def test_back_view_small_face_and_blur_are_unobservable():
 def test_region_distance_is_not_box_center_distance():
     mask = np.zeros((100,100),bool); mask[50,80] = True
     assert abs(mask_region_distance(mask, [[45,45],[55,45],[55,55],[45,55]])-25) < 1e-8
+
+
+def test_uncertain_mask_tip_requests_attention_without_confirmed_dwell():
+    lm = landmarks()
+    mask = np.zeros((100,100),bool); mask[49:52,10:50] = True
+    base = dict(schema_version=2,face_ok=True,mouth_visible=True,hand_ok=True,face_width=60,
+                detector_ok=True,classifier_ok=True,object_present=True,d_face_width=.7)
+    proximity = object_proximity(Detection((10,49,50,52),'toothbrush',.55,mask),lm,base,{})
+    assert not proximity['mask_reliable'] and not proximity['proximity_evidence']
+    assert proximity['candidate_object_d_relative'] == 0
+    processor = AlertProcessor(load_config())
+    for i in range(20):
+        out = processor.step(dict(base,**proximity,t=i*.1))
+        assert out['level'] == 1 and out['dwell'] == 0 and not out['notify']
+    for overrides in [dict(mouth_visible=False),dict(association_ambiguous=True),
+                      dict(hand_ok=False),dict(source_ok=False),dict(object_present=False)]:
+        processor.reset()
+        assert processor.step(dict(base,**proximity,t=3,**overrides))['level'] == 0

@@ -204,6 +204,12 @@ class AlertProcessor:
             level, reason = CAUTION, "unsafe object approaching"
         if modern and near_frame and not f.get('proximity_evidence',False) and status != 'safe':
             level,reason = CAUTION,'suspected proximity; reliable mask evidence missing'
+        candidate_d = f.get('candidate_object_d_relative', math.nan)
+        if (modern and valid and visible and not f.get('association_ambiguous',False)
+                and f.get('hand_ok',False) and f.get('detector_ok',False)
+                and f.get('object_present',False) and not f.get('proximity_evidence',False)
+                and not _isnan(candidate_d) and candidate_d <= tc['d_enter'] and level < CAUTION):
+            level,reason = CAUTION,'possible held object near mouth; localization uncertain'
         if lost_near and level < CAUTION:
             level, reason = CAUTION, "mouth hidden by hand"
         # Preserve recent risk, but do not accumulate dwell from held coordinates.

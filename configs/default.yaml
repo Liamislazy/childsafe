@@ -120,6 +120,7 @@ rules:                      # D3
 
 runtime:
   max_people: 4
+  identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
   stale_frame_s: 0.25
   camera_index: 0
   width: 1280
@@ -145,3 +146,4 @@ quality:
   max_brightness: 220
   min_mask_px: 16
   min_mask_conf: 0.6
+  min_candidate_mask_conf: 0.5 # attention only; never counts toward confirmed danger

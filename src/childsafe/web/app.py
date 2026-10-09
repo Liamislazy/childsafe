@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image
 
 from childsafe.alerts.processor import LEVEL_NAMES, AlertProcessor
@@ -24,6 +24,7 @@ from childsafe.vision.geometry import MOUTH, GeometryExtractor
 from childsafe.vision.landmarks import LandmarkDetector
 from childsafe.vision.object_classifier import ObjectClassifier, hand_crop_box
 from childsafe.vision.elevated import ElevatedQuality
+from childsafe.pipeline import FramePipeline
 
 STATIC = Path(__file__).parent / "static"
 
@@ -132,6 +133,94 @@ class Demo:
                            for n, r in res.items()}}
 
 
+class RuntimeDemo(Demo):
+    """One full multi-person runtime for live frames; photo comparison stays separate."""
+    def __init__(self, cfg, models):
+        if not models:
+            raise ValueError('A live checkpoint is required')
+        self.cfg, self.lock = cfg, threading.Lock()
+        self.paths = models
+        self.classifiers = {name: ObjectClassifier(path) for name, path in models.items()}
+        self.live_name = next(iter(models))
+        self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
+        self.t0 = time.perf_counter()
+        self.rows = []
+        self.recording_full = False
+
+    def reset(self):
+        self.pipeline.reset()
+        self.rows = []
+        self.recording_full = False
+
+    def session_csv(self):
+        import pandas as pd
+        with self.lock:
+            return pd.DataFrame(self.rows).to_csv(index=False)
+
+    def close(self):
+        self.pipeline.close()
+
+    def frame(self, body, kind, severity, mode):
+        rgb = _decode(body)
+        if kind in KINDS and severity > 0:
+            rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
+        with self.lock:
+            t = time.perf_counter()-self.t0
+            scene, _, out = self.pipeline.process(rgb, t)
+            if not self.recording_full:
+                if len(self.rows)+len(out['feature_rows']) <= 100000:
+                    self.rows.extend(dict(row) for row in out['feature_rows'])
+                else:
+                    self.recording_full = True
+            people = []
+            for person in out['persons']:
+                pid = person['person_id']
+                lm = scene.people.get(pid)
+                features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
+                people.append({
+                    'id': pid, 'box': scene.boxes.get(pid),
+                    'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
+                    'observation': person['observation'], 'green': person['green'],
+                    'reason': person['reason'], 'reasons': person['observation_reasons'],
+                    'face': bool(lm is not None and lm.face is not None),
+                    'mouth_visible': bool(features.get('mouth_visible')),
+                    'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
+                    'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
+                    'object': features.get('object_label', ''),
+                    'mask_reliable': bool(features.get('mask_reliable')),
+                    'class': person['obj_class'], 'status': person['obj_status'],
+                    'p_unsafe': _nan_to_none(person['p_unsafe']),
+                    'd': _nan_to_none(person['d']), 'near': bool(person['near']),
+                    'dwell': person['dwell'], 'notify': bool(person['notify'])})
+            objects = []
+            for obj in scene.objects:
+                polygon = []
+                if obj.mask is not None:
+                    import cv2
+                    contours, _ = cv2.findContours(obj.mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                    if contours:
+                        contour = max(contours, key=cv2.contourArea)
+                        polygon = cv2.approxPolyDP(contour, .003*cv2.arcLength(contour, True), True)[:,0,:].tolist()
+                objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
+            detector = self.pipeline.detector
+            limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
+            if self.recording_full:
+                limitations.append('Bộ nhớ số liệu đã đầy: tải phiên hiện tại rồi Reset alerts để bắt đầu phiên mới.')
+            if not detector.ok:
+                limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
+            if not people:
+                limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
+            if out['inference_s'] > self.cfg['temporal'].get('max_gap_s',.25):
+                limitations.append('Xử lý chậm hơn khoảng liên tục cho phép; có thể không tích lũy được cảnh báo. Thử một người hoặc máy nhanh hơn.')
+            return {'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
+                    'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
+                    'green':out['green'], 'observation':out['observation'],
+                    'reason':out['reason'], 'limitations':limitations,
+                    'notify':any(p['notify'] for p in people),
+                    'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
+                    'ms':round(out['inference_s']*1000,1), 'live_model':self.live_name}
+
+
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
 
@@ -142,6 +231,7 @@ def create_app(demo: Demo) -> FastAPI:
     @app.get("/api/info")
     def info():
         return {"models": {n: Path(p).parent.name for n, p in demo.paths.items()}, "corruptions": KINDS,
+                'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")
@@ -157,5 +247,12 @@ def create_app(demo: Demo) -> FastAPI:
         with demo.lock:
             demo.reset()
         return {"ok": True}
+
+    @app.get('/api/session.csv')
+    def session_csv():
+        if not isinstance(demo, RuntimeDemo):
+            return Response(status_code=404)
+        return Response(demo.session_csv(), media_type='text/csv',
+                        headers={'Content-Disposition':'attachment; filename="camera_session.csv"'})
 
     return app

@@ -1,66 +1,114 @@
-# Huấn luyện bổ sung trên Kaggle
+# Train ChildSafe trên bộ dữ liệu đầy đủ bằng Kaggle
 
-## Vấn đề đã xác định
+Import `notebooks/childsafe_expanded_kaggle.ipynb`. File `childsafe_kaggle.ipynb` cũng dùng cùng workflow đầy đủ; chỉ cần chạy một notebook. Notebook tự chứa source, cấu hình và bảng chia cố định.
 
-Checkpoint đang chạy có 10 lớp và không có `pen` hoặc `coin`. Một vật ngoài các lớp đã học vẫn bị softmax ép vào một lớp quen thuộc. Không thể suy ra chính xác nguyên nhân mất cảnh báo chỉ từ một ảnh tĩnh: còn có thể mất mốc tay/miệng hoặc vật bị che.
+## Dữ liệu
 
-Trong giao diện cũ, `p` là xác suất **nhóm unsafe**, không phải xác suất của lớp vật. Code cũ dùng độ tin cậy của nhóm safe/unsafe mà bỏ qua `obj_conf`. Code mới yêu cầu cả hai vượt ngưỡng, coi `other`/`unknown` là chưa xác định, và giữ trạng thái gần trong một khoảng ngắn khi mất mốc. Đây không phải cơ chế phát hiện mọi vật lạ: mô hình vẫn có thể nhận sai với độ tin cậy cao.
+Đã tải và kiểm tra ngày 08/10/2026:
 
-## Những file đã chuẩn bị
+| Nguồn | Số ảnh/crop | Vai trò |
+|---|---:|---|
+| ChildSUn | 5.353 | Giữ train/test gốc; chia validation thành val và cal |
+| Open Images train | 20.557 | Pool bổ sung, chia theo nhóm nguồn cố định |
+| Open Images validation | 1.973 | Pool bổ sung, chia theo nhóm nguồn cố định |
+| Open Images test | 4.069 | Đánh giá ngoài miền, không đưa vào train/val/cal |
 
-- `notebooks/childsafe_expanded_kaggle.ipynb`: notebook tự chứa code, cấu hình và bảng chia ChildSUn gốc; không cần upload cả repository.
-- `outputs/datasets/childsafe_supplement.zip`: ảnh bổ sung, manifest chứa nguồn/giấy phép/tác giả, bảng ảnh để kiểm tra và báo cáo thu thập.
-- `scripts/collect_openimages.py`: thu thập ảnh vật có bounding box từ Open Images. Không cào ảnh từ kết quả tìm kiếm.
-- `scripts/prepare_expanded_data.py`: hợp nhất dữ liệu đã duyệt, kiểm tra ảnh trùng và chia theo nhóm nguồn.
-- `scripts/smoke_expanded_training.py`: kiểm tra luồng train/lưu/nạp lại trên CPU; checkpoint này **không được dùng triển khai**.
+Pool chính có **27.883 ảnh, 11 lớp**: `babyitems`, `ball`, `fork`, `fruit`, `heater`, `knife`, `other`, `scissors`, `socket`, `spoon`, `toy`. Dữ liệu đầy đủ nghĩa là dùng đủ pool đã chọn với holdout riêng; test không cập nhật trọng số. Đây là số crop lấy theo giới hạn script, không phải toàn bộ Open Images.
 
-Code huấn luyện được sửa từ pipeline hiện có của nhóm: giữ EfficientNet-B0/MobileNetV3 và định dạng checkpoint để dùng lại trong webcam.
+`other` là lớp để runtime từ chối, không phải khẳng định an toàn. Pen hiện thuộc `other`; coin không có lớp riêng. Nhãn binary `safe` trong bảng cũ chỉ dùng tính P(unsafe). Workflow 169 crop pen/coin đã duyệt còn ở `scripts/prepare_expanded_data.py`, nhưng không tự trộn vào bộ 11 lớp vì chính sách nhãn Pen khác nhau.
 
-## Dữ liệu hiện có
+## 1. Upload dữ liệu
 
-Ngày 07/10/2026 tải 194 ảnh: bút 34, đồng xu 24, dao 57, kéo 1, nĩa 33, thìa 45. Sau xem trực quan các bảng ảnh, duyệt 169: bút 29, đồng xu 23, dao 56, kéo 1, nĩa 25, thìa 35. Loại 25 ảnh mơ hồ, quá mờ hoặc nguồn chứa nhiều loại vật trong bộ lấy mẫu này. Các ảnh loại vẫn được giữ để kiểm tra nhưng không vào train.
+Tại thư mục repository, tạo ZIP chỉ gồm crop và manifest ghi công, bỏ metadata gần 3 GB:
 
-Đây là **bộ khởi đầu nhỏ**, không phải bộ dữ liệu chứng minh sản phẩm hoạt động. Số ảnh kéo thấp do điều kiện lấy mẫu; lớp kéo vẫn có dữ liệu ChildSUn. Các ảnh bút cận ngòi, thân bút hoặc bút đánh dấu có thể khác nhiều so với webcam. Số ID ảnh khác nhau không bảo đảm là các vật lý khác nhau; kiểm tra ảnh gần trùng giúp giảm rò rỉ nhưng không thay thế kiểm tra theo vật và phiên ghi hình.
+```powershell
+Compress-Archive -Path data\external\openimages\train,data\external\openimages\validation,data\external\openimages\test,data\external\openimages\manifest.csv -DestinationPath outputs\openimages_crops.zip
+```
 
-Nguồn: [Open Images](https://storage.googleapis.com/openimages/web/download_v7.html), [kho ảnh CVDF](https://github.com/cvdfoundation/open-images-dataset). Manifest lưu giấy phép CC BY của từng ảnh, URL gốc, tác giả và bounding box. Ảnh đã được cắt theo bounding box, thêm lề 8% và lưu JPEG; khi chia sẻ phải giữ thông tin ghi công và thông báo đã chỉnh sửa. Bộ lọc loại nguồn có nhãn người/khuôn mặt, sau đó duyệt ảnh crop; thiếu nhãn người không tự nó chứng minh ảnh không có người.
+Nếu ZIP đã tồn tại, chọn tên mới để giữ bản cũ. Tạo Kaggle Dataset từ ZIP rồi Add Input vào notebook. Giữ manifest chứa nguồn/tác giả/giấy phép khi chia sẻ crop. Không upload `.venv`, weights hoặc metadata. Tổng crop khoảng 377 MB trước nén.
 
-`unsafe` của bút/đồng xu là **quy ước nguy cơ trong ngữ cảnh đưa vật vào miệng**. Nó không có nghĩa mọi hoạt động dùng bút đều nguy hiểm. `safe` của thìa/trái cây kế thừa bài toán gốc, không chứng minh ăn uống an toàn hay không nghẹn. Không tự gán vật chưa biết thành safe.
+Thêm dataset ChildSUn `fairuzkhan002/datasetvgg19`. Input Open Images cần chứa:
 
-## Các bước trên Kaggle
+```text
+<OPENIMAGES_ROOT>/
+  manifest.csv
+  train/<category>/*.jpg
+  validation/<category>/*.jpg
+  test/<category>/*.jpg
+```
 
-1. Tạo Kaggle Dataset riêng tư từ ZIP bổ sung; thêm nó cùng dataset ChildSUn vào notebook.
-2. Import `childsafe_expanded_kaggle.ipynb`. Bật GPU và Internet để tải thư viện/trọng số ImageNet.
-3. Sửa `RAW_ROOT` thành thư mục chứa trực tiếp các tên ảnh trong bảng chia gốc; sửa `SUPPLEMENT` thành đường dẫn `manifest.csv` trong input bổ sung. Không chọn tự động thư mục lớn nhất.
-4. Bộ khởi đầu đã có `reviewed=true` cho 169 ảnh. Kiểm tra lại bảng ảnh, sửa nhãn hoặc đặt false nếu thấy không phù hợp. Ảnh mới tải mặc định luôn false.
-5. Chạy phần chuẩn bị. Test ChildSUn giữ nguyên. Validation gốc được chia theo nhóm thành validation chọn checkpoint và calibration fit temperature. Ảnh bổ sung được chia theo nhóm nguồn, khoảng 70/10/10/10 cho train/val/cal/test.
-6. Nếu phát hiện ảnh trùng nối hai tập gốc, nhãn mâu thuẫn hoặc lớp mới không đủ nhóm, chương trình dừng để kiểm tra; không được bỏ qua lỗi bằng random split. Bảng `expanded.report.json` ghi số ảnh và ảnh gần trùng. Mọi lớp phải có mẫu ở cả bốn tập trước khi train.
-7. Train mặc định EfficientNet-B0, 30 epochs tối đa, early stopping, trọng số loss theo căn nghịch đảo tần suất lớp, augmentation che một phần/nhòe/ánh sáng và letterbox giữ cả vật dài. Không dùng random crop mạnh làm biến mất đầu bút. Checkpoint ghi preprocessing để inference dùng đúng phép biến đổi.
-8. Tải ZIP kết quả. Lưu `run_config.json`, `training_manifest.csv`, `metrics.json`, `logits.npz`, `best.pt`. Chạy webcam với `best.pt` mới. Phiên webcam đang mở không tự nạp code/checkpoint mới: đóng bằng Q rồi mở lại.
+Kaggle có thể giải nén ZIP trực tiếp ở root hoặc trong thư mục con; xem Input panel để chọn đúng đường dẫn.
 
-Các phân hoạch `validation`/`test` trong tên nguồn Open Images chỉ là tên nguồn tải. Chúng không được dùng làm tập kiểm tra dự án một cách mặc định; bảng chia nhóm riêng quyết định vai trò từng ảnh.
+## 2. Import notebook và sửa đường dẫn
 
-## Bổ sung dữ liệu sát thực tế hơn
+Import notebook, bật GPU và Internet trong Settings. Internet dùng cài dependency và lấy pretrained ImageNet weights. Cell setup dừng nếu không có CUDA GPU.
 
-Mục tiêu thu thập tiếp theo, **chưa phải dữ liệu đã có**: mỗi lớp bút/đồng xu/nắp nhỏ có 100–200 ảnh từ nhiều vật thật và 5–10 phiên/người lớn đồng ý tham gia. Chụp crop đúng vùng tay mà ứng dụng sử dụng, ở xa/gần miệng, nghiêng, thiếu sáng và che khuất 25–75%. Dùng đạo cụ tù hoặc ma-nơ-canh để mô phỏng gần miệng; không cho vật vào miệng, không thử bằng trẻ em. Thu thêm tay rỗng và vật chưa biết để đánh giá từ chối nhận diện riêng; không mặc định đưa chúng vào lớp safe.
+Trong cell Input paths sửa:
 
-Có thể thêm dòng vào manifest với các cột `path,category,label,group,domain,reviewed`. `path` tính từ vị trí manifest. Đặt `domain=adult_hand_crop`. Giữ mọi ảnh của cùng người/phiên hoặc cùng vật thử trong một nhóm; người/vật dành cho kiểm tra không dùng để train. Nếu một người xuất hiện trong nhiều phiên, dùng nhóm người thay vì từng frame. Nhóm có thể chứa nhiều lớp. Mẫu nhóm phải đủ để cả bốn tập có các lớp cần đánh giá.
+```python
+RAW_ROOT = Path('/kaggle/input/<childsun>/<thu-muc-chua-anh>')
+OPENIMAGES_ROOT = Path('/kaggle/input/<openimages-dataset>/<root-neu-co>')
+```
 
-Collector hỗ trợ `--subset test` để lấy thêm ảnh từ nguồn Open Images khác. Đây là tùy chọn mở rộng, chưa được chạy/duyệt trong bộ khởi đầu. Khi hợp nhất, đặt ảnh và đường dẫn manifest về một thư mục chung; giữ nguyên `group` có prefix nguồn và duyệt thủ công. Đừng chạy lại collector vào thư mục đã duyệt nếu muốn giữ các chỉnh sửa manifest.
+`RAW_ROOT` chứa trực tiếp filename dạng `baby_items_10_0_1720.jpg`. `OPENIMAGES_ROOT` chứa trực tiếp manifest và ba thư mục train/validation/test.
 
-## Cách chứng minh cải thiện
+Chạy setup, các cell source rồi cell chuẩn bị. Script `prepare_full_training.py` đối chiếu mọi ảnh với `splits_with_other_train.csv`, kiểm tra nhóm nguồn và download manifest, rồi tạo `data/splits/full_training.csv` với đường dẫn tuyệt đối trên Kaggle. Nếu thiếu/thừa file, sửa input thay vì bỏ assertion hoặc âm thầm train tập con.
 
-So sánh baseline và bản cải tiến trên cùng tập kiểm tra gốc và cùng kịch bản webcam giữ riêng. Chọn kiến trúc/ngưỡng bằng validation, fit temperature bằng calibration; không chọn lại dựa trên test. Có thể chạy baseline 10 lớp trên ảnh bút/đồng xu để đo tỷ lệ nhận nhầm safe, nhưng không báo accuracy 12 lớp cho baseline không có hai lớp đó.
+## 3. Split và calibration
 
-Đọc recall riêng của bút/đồng xu, confusion với fruit/spoon, unsafe recall, ECE, coverage và số unsafe bị kết luận safe với độ tin cậy cao. Phân biệt mẫu bị từ chối sang caution với mẫu bị nhận nhầm safe. Các test bổ sung hiện chỉ vài ảnh/lớp; chưa đủ để báo con số ổn định hoặc khẳng định vượt mô hình cũ.
+Bảng gốc có train 19.523, validation 4.194, test 4.166. Giữ nguyên mọi ảnh train/test và các nhóm chống trùng đã có. Chia một nửa số nhóm validation sang `cal` bằng seed 42, yêu cầu mọi lớp có mặt trong cả val và cal. Số ảnh hai phần có thể lệch vì kích thước nhóm khác nhau. Crop cùng ảnh nguồn không đi qua nhiều phần.
 
-Đối với sản phẩm và VISEF, đánh giá riêng **recall theo sự kiện, cảnh báo nhầm/giờ, thời gian cảnh báo và FPS** trên kịch bản mô phỏng người lớn/ma-nơ-canh. Kết quả phân loại ảnh không thay thế kết quả cảnh báo sự kiện; chưa có bằng chứng giảm tai nạn thực tế.
+`val` chọn checkpoint theo macro-F1 và early stopping; `cal` fit temperature; `test` đánh giá nội bộ. `test_by_domain` tách kết quả theo nguồn; ChildSUn test vẫn gồm 789 ảnh. Open Images test 4.069 crop được đánh giá riêng sau khi chọn cấu hình. Không chọn model/ngưỡng bằng cách thử lại trên test.
 
-## Đã kiểm tra / chưa kiểm tra
+Notebook dùng bảng split đã commit, không hash lại toàn bộ dữ liệu trong phiên Kaggle. Khi đổi dữ liệu cần tạo và kiểm tra split mới, không dùng bảng cố định cũ.
 
-Đã chạy kiểm thử logic từ chối nhận diện, replay, che khuất, giữ hai đầu vật dài và chống rò rỉ nhóm. Đã train thử một epoch từ khởi tạo ngẫu nhiên trên hai lớp crop thật và nạp lại checkpoint. Vòng thử này chỉ kiểm tra code, không đo chất lượng mô hình.
+## 4. Train
 
-Chẩn đoán thêm trên 29 crop bút đã duyệt: checkpoint cũ với logic cũ cho safe 3, uncertain 8, unsafe 18. Giữ nguyên trọng số và áp dụng bộ lọc mới: safe 1, uncertain 20, unsafe 8. Đây là phép thử ảnh vật riêng lẻ, không phải điểm test của mô hình đã train mới hay đánh giá cảnh báo webcam. Bộ lọc làm tăng số trường hợp caution, và vẫn còn một trường hợp nhận nhầm safe. Chi tiết ở `outputs/verification/pen_baseline_report.json` và CSV dự đoán.
+Mặc định EfficientNet-B0 pretrained, tối đa 30 epochs, batch 32, robust augmentation, letterbox 224×224 và sqrt WeightedRandomSampler. Letterbox giữ cả vật dài; checkpoint ghi preprocessing để inference dùng cùng phép biến đổi.
 
-Chưa chạy train đầy đủ trên Kaggle, chưa kiểm tra hợp nhất với ảnh ChildSUn thật tại máy này (hiện chỉ có bảng chia), chưa đánh giá lại webcam bằng checkpoint mới. Notebook chưa được thực thi trong môi trường Kaggle thực.
-> Ghi chú runtime góc cao (07/10/2026): các kết quả thu thập/train thử bên dưới được kế thừa từ checkout gốc, không chạy lại trong lượt triển khai runtime này. Không tải thêm dữ liệu hoặc train mới. Classifier bổ sung không định vị đầu bút/đồng xu; runtime cần detector có mask phù hợp. YOLO11n-seg pretrained chưa có các lớp này, nên vẫn hiển thị hạn chế quan sát.
+Dùng sampling sqrt, không bật thêm `--balanced` (loss weighting). Một epoch lấy số mẫu bằng kích thước train với replacement, nên không đảm bảo từng ảnh đều được lấy trong mỗi epoch; pool và loader vẫn bao gồm đủ ảnh train.
 
+Có thể đổi `ARCH='mobilenetv3_large_100'`, giảm `BATCH_SIZE=16` khi thiếu VRAM hoặc đổi `EPOCHS`. Chọn `RUN` mới cho mỗi cấu hình để giữ kết quả cũ. Cell train sẽ dừng nếu `best.pt` đã tồn tại; pipeline hiện không hỗ trợ resume giữa epoch.
+
+Lệnh notebook thực thi tương đương:
+
+```bash
+python -m childsafe.classifier.train --arch efficientnet_b0 --split group \
+  --config configs/kaggle_full.yaml --manifest data/splits/full_training.csv \
+  --robust --preprocessing letterbox --epochs 30 --batch-size 32 \
+  --out outputs/full_dataset/efficientnet_b0_robust_letterbox
+```
+
+Không cần tải Open Images lại trên Kaggle. `--workers 8` của downloader là số luồng mạng; `num_workers=2` trong notebook là số worker DataLoader, có vai trò khác.
+
+## 5. Kết quả và checkpoint
+
+Đọc `metrics.json`: macro-F1, recall từng lớp, unsafe recall, ECE, rejection coverage và confusion matrix. Đọc `test_by_domain` để tránh tổng accuracy che khuất lỗi theo nguồn. Cell External Open Images test chạy `evaluate --ood`, tạo `eval_report.json`.
+
+Cell cuối tạo `/kaggle/working/full_dataset_results.zip`, gồm:
+
+- `best.pt` có temperature và preprocessing.
+- `metrics.json`, `logits.npz`, `run_config.json`, `training_manifest.csv`.
+- `eval_report.json` và các biểu đồ pipeline tạo.
+- `full_training.csv`, báo cáo chuẩn bị, `kaggle_full.yaml`, manifest ghi công Open Images.
+
+Tải ZIP qua link cuối notebook hoặc Output của phiên Kaggle. Manifest lưu đường dẫn tuyệt đối của phiên train; trên máy khác chạy lại chuẩn bị với root mới.
+
+Chạy runtime local bằng checkpoint mới:
+
+```powershell
+.venv\Scripts\python scripts\run_webcam.py --ckpt <duong-dan-best.pt>
+```
+
+Phân loại ảnh chưa xác nhận chất lượng cảnh báo webcam góc cao/nhiều người. YOLO11n-seg pretrained thiếu pen/coin; cần detector phù hợp để định vị chúng. Nghiệm thu runtime theo `docs/runtime_validation.md`.
+
+## Kiểm tra và tái tạo
+
+Đã đối chiếu đủ 22.530 crop Open Images train/validation với bảng đầy đủ, không thiếu ảnh. Suite có 76 kiểm thử đều qua, gồm source nhúng trong cả hai notebook, chuẩn bị manifest/provenance, giữ test và chống rò rỉ calibration. Kiểm tra cú pháp script cũng qua. ChildSUn thật chưa có ở worktree này nên cell chuẩn bị sẽ kiểm tra lại input trên Kaggle; chưa chạy full GPU training hay phiên Kaggle thật trong lượt sửa này.
+
+Khi sửa source pipeline, tái tạo cả hai notebook:
+
+```powershell
+.venv\Scripts\python scripts\build_expanded_kaggle_notebook.py
+.venv\Scripts\python scripts\build_kaggle_notebook.py
+```

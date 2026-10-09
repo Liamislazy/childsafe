@@ -70,24 +70,22 @@
 </head>
 <body>
 <header>
-  <h1>ChildSafe: dangerous-object demo</h1>
+  <h1>ChildSafe — thử cảnh báo camera</h1>
   <span class="privacy">Runs only on this computer: frames are processed in memory and never saved.</span>
   <div class="tabs"><button id="tabLive" class="on">Live webcam</button><button id="tabPhoto">Photo test</button></div>
 </header>
 
 <main>
+  <p class="note">Theo dõi từng người, tay, miệng và mask vật. Tay hoặc vùng vật nghi ngờ sát miệng có thể tạo cảnh giác. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
   <section id="live" class="grid">
     <div class="card">
       <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
       <div class="controls">
         <button id="startBtn" class="btn">Start camera</button>
         <button id="resetBtn" class="btn ghost">Reset alerts</button>
-        <label>Classify
-          <select id="mode">
-            <option value="hand">crop around hand</option>
-            <option value="center">center of frame</option>
-            <option value="full">whole frame</option>
-          </select></label>
+        <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
+        <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
+        <button id="testSound" class="btn ghost">Thử âm báo</button>
         <label>Degrade frame
           <select id="kind"><option value="">none</option></select></label>
         <label>Severity <span id="sevVal">0</span>
@@ -95,11 +93,9 @@
         <span class="stats" id="stats">camera off</span>
       </div>
       <div id="liveErr" class="err"></div>
-      <div class="seen"><img id="cropImg" alt=""><div class="note">What both models see (after degradation).<br>
-        Distance is hand-to-mouth divided by face width (relative, not cm). Near when below
-        <span id="dEnter">?</span>.</div></div>
+      <div class="note">Khung người có ID; điểm xanh là tay, hồng là miệng; đường vàng là mask vật. Không thấy tay/miệng/vật sẽ được nêu ở bảng trạng thái. Khoảng cách là tỷ lệ trên ảnh, không phải centimet. Số liệu tọa độ/trạng thái giữ trong RAM; tải xuống trước khi Reset hoặc bật phiên camera mới.</div>
     </div>
-    <div class="models" id="liveModels"></div>
+    <div><div id="runtimeStatus" class="card" role="status" aria-live="polite">Camera chưa bật</div><div class="models" id="liveModels"></div></div>
   </section>
 
   <section id="photo" class="grid hidden">
@@ -112,7 +108,7 @@
           <input id="psev" type="range" min="0" max="5" value="0"></label>
       </div>
       <img id="photoPreview" alt="">
-      <div class="note">The whole photo is classified. Uncertain = calibrated confidence below the reject threshold.</div>
+      <div class="note">The whole photo is classified. Uncertain means low confidence or an unrecognized object (other); it does not mean safe.</div>
     </div>
     <div class="models" id="photoModels"></div>
   </section>
@@ -121,6 +117,7 @@
 <script>
 const $ = id => document.getElementById(id);
 let info = null, running = false, stream = null, frames = 0, lastFpsT = performance.now(), photoBlob = null;
+let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
 const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
 
 function modelCard(name, label) {
@@ -156,9 +153,8 @@ async function loadInfo() {
   info = await (await fetch("/api/info")).json();
   for (const sel of [$("kind"), $("pkind")])
     for (const k of info.corruptions) sel.insertAdjacentHTML("beforeend", `<option value="${k}">${k.replace("_", " ")}</option>`);
-  $("liveModels").innerHTML = Object.entries(info.models).map(([n, l]) => modelCard(n, l)).join("");
+  $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera để kiểm tra người, tay, miệng và vật.';
   $("photoModels").innerHTML = Object.entries(info.models).map(([n, l]) => modelCard(n, l)).join("");
-  $("dEnter").textContent = info.thresholds.d_enter;
 }
 
 // ---------- live ----------
@@ -171,29 +167,39 @@ async function start() {
   $("liveErr").textContent = "";
   $("video").srcObject = stream; await $("video").play();
   await fetch("/api/reset", { method: "POST" });
-  running = true; $("startBtn").textContent = "Stop camera"; loop();
+  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  await audioContext.resume();
+  running = true; runToken++; lastReply = performance.now(); lastLevel = 0;
+  frames = 0; lastFpsT = performance.now();
+  $("startBtn").textContent = "Stop camera"; loop(runToken);
 }
 function stop() {
-  running = false; $("startBtn").textContent = "Start camera";
+  running = false; runToken++; $("startBtn").textContent = "Start camera";
   if (stream) stream.getTracks().forEach(t => t.stop());
   const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "camera off";
+  $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
 }
 
-async function loop() {
-  if (!running) return;
+async function loop(token) {
+  if (!running || token !== runToken) return;
   const v = $("video");
   work.width = v.videoWidth; work.height = v.videoHeight;
   const wctx = work.getContext("2d");
   wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
   wctx.drawImage(v, 0, 0);
   const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
-  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value, mode: $("mode").value });
+  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value });
   try {
     const t0 = performance.now();
-    const res = await (await fetch("/api/frame?" + q, { method: "POST", body: blob })).json();
+    const response = await fetch("/api/frame?" + q, { method: "POST", body: blob, signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error('HTTP '+response.status);
+    const res = await response.json();
+    if (!running || token !== runToken) return;
+    lastReply = performance.now();
     draw(res);
-    for (const [n, m] of Object.entries(res.models)) fillCard($("liveModels"), n, m, true);
-    $("cropImg").src = res.crop || "";
+    renderRuntime(res);
+    if ($("sound").checked && res.level > 0 && (res.level > lastLevel || res.notify || performance.now()-lastBeep > 3000)) beep(res.level);
+    lastLevel = res.level;
     frames++;
     const now = performance.now();
     if (now - lastFpsT > 1000) {
@@ -201,8 +207,47 @@ async function loop() {
       frames = 0; lastFpsT = now;
     }
   } catch (e) { $("liveErr").textContent = "Server error: " + e.message; }
-  requestAnimationFrame(loop);
+  requestAnimationFrame(() => loop(token));
 }
+
+function beep(level) {
+  if (!audioContext || audioContext.state !== 'running') return;
+  const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+  oscillator.frequency.value = level === 2 ? 880 : 520;
+  gain.gain.value = .08; oscillator.connect(gain); gain.connect(audioContext.destination);
+  oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
+}
+function renderRuntime(res) {
+  const names = ['CHƯA THẤY NGUY CƠ', 'CẢNH GIÁC', 'NGUY HIỂM'];
+  const status = $('runtimeStatus');
+  status.replaceChildren();
+  const heading = document.createElement('h3'); heading.textContent = res.level === 0 && !res.green ? 'CHƯA ĐỦ QUAN SÁT' : names[res.level];
+  heading.style.color = res.level === 2 ? '#ef5b4c' : res.level === 1 ? '#f0a92b' : '#98a2b3'; status.append(heading);
+  const summary = document.createElement('p');
+  summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
+  for (const message of [...res.limitations, res.reason].filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; status.append(p); }
+  $('liveModels').replaceChildren();
+  for (const person of res.people) {
+    const card=document.createElement('div'); card.className='card model';
+    const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
+    const level=document.createElement('div'); level.className='level '+(person.level === 0 && !person.green ? 'limited' : person.level_name);
+    level.textContent=person.level === 0 && !person.green ? 'QUAN SÁT HẠN CHẾ' : names[person.level]; card.append(level);
+    const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
+      `Vật: ${person.object || 'chưa phát hiện'} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
+      `Phân loại: ${person.class || 'chưa có'} (${person.status})`,
+      `Khoảng cách: ${person.d == null ? 'chưa đo được' : person.d.toFixed(2)} · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      person.reason, ...person.reasons];
+    for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
+    $('liveModels').append(card);
+  }
+}
+setInterval(() => {
+  if (running && performance.now()-lastReply > 1500) {
+    $('runtimeStatus').textContent='Chưa nhận được kết quả mới — không dùng trạng thái cũ để kết luận an toàn.';
+    $('liveModels').replaceChildren();
+    $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
+  }
+},500);
 
 function draw(res) {
   const cv = $("overlay"), st = cv.parentElement.getBoundingClientRect();
@@ -212,17 +257,25 @@ function draw(res) {
   const s = Math.min(st.width / res.width, st.height / res.height);
   const ox = (st.width - res.width * s) / 2, oy = (st.height - res.height * s) / 2;
   const P = ([x, y]) => [ox + x * s, oy + y * s];
-  const worst = Math.max(...Object.values(res.models).map(m => m.level));
+  const worst = res.level;
   const css = LEVEL_COLOR();
-  const col = worst === 0 && !Object.values(res.models).every(m => m.green) ? "#6b7280" :
+  const col = worst === 0 && !res.green ? "#6b7280" :
     css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();
   ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.strokeRect(2, 2, st.width - 4, st.height - 4);
-  if (res.box) { const [a, b] = [P([res.box[0], res.box[1]]), P([res.box[2], res.box[3]])];
+  for (const person of res.people) {
+  if (person.box) { const [a, b] = [P([person.box[0], person.box[1]]), P([person.box[2], person.box[3]])];
                  ctx.setLineDash([6, 4]); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5;
                  ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.setLineDash([]); }
   ctx.fillStyle = "#4fd1ff";
-  for (const hand of res.hands) for (const p of hand) { const [x, y] = P(p); ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
-  if (res.mouth) { const [x, y] = P(res.mouth); ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
+  for (const hand of person.hands) for (const p of hand) { const [x, y] = P(p); ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
+  if (person.mouth) { const [x, y] = P(person.mouth); ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
+  if (person.box) { const [x,y]=P(person.box); ctx.fillStyle='#ffffff'; ctx.fillText('ID '+person.id,x,y+15); }
+  }
+  for (const object of res.objects) {
+    ctx.strokeStyle='#f0a92b'; ctx.fillStyle='#f0a92b'; ctx.lineWidth=2;
+    const [a,b]=[P(object.box),P([object.box[2],object.box[3]])]; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.fillText(object.label,a[0],a[1]-5);
+    if (object.mask.length) { ctx.beginPath(); object.mask.forEach((point,i)=>{ const [x,y]=P(point); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.closePath(); ctx.stroke(); }
+  }
 }
 
 // ---------- photo ----------
@@ -237,6 +290,10 @@ function setPhoto(file) { if (file) { photoBlob = file; classifyPhoto(); } }
 
 // ---------- wiring ----------
 $("startBtn").onclick = start;
+$("testSound").onclick = async () => {
+  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  await audioContext.resume(); beep(1);
+};
 $("resetBtn").onclick = () => fetch("/api/reset", { method: "POST" });
 $("sev").oninput = () => $("sevVal").textContent = $("sev").value;
 $("psev").oninput = () => { $("psevVal").textContent = $("psev").value; classifyPhoto(); };

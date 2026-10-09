@@ -41,7 +41,8 @@ class FramePipeline:
                 self.classifier = ObjectClassifier(ckpt)
             except Exception as exc:
                 self.classifier_error = type(exc).__name__
-        self.tracker = PersonTracker(max_people=cfg.get('runtime', {}).get('max_people', 4))
+        self.tracker = PersonTracker(max_people=cfg.get('runtime', {}).get('max_people', 4),
+                                     hold_s=cfg.get('runtime', {}).get('identity_hold_s', 3.))
         self.states, self.session_id = {}, 0
 
     def _new_state(self):
@@ -78,8 +79,24 @@ class FramePipeline:
             scene.boxes[pid] = box
             if state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]:
                 try:
-                    lm = state['landmarks'].detect(rgb[box[1]:box[3],box[0]:box[2]], t)
-                    scene.people[pid] = to_original(lm, box, w, h)
+                    # Tight body crops can prevent palm detection for a gripping hand.
+                    # For a lone person retain the original camera framing, then check
+                    # ownership. Multiple people retain separate body crops.
+                    if len(active) == 1 and not track.ambiguous:
+                        crop = (0, 0, w, h)
+                    else:
+                        crop = box
+                    lm = state['landmarks'].detect(rgb[crop[1]:crop[3],crop[0]:crop[2]], t)
+                    lm = to_original(lm, crop, w, h)
+                    inside = lambda points: (box[0] <= points[:,0].mean() <= box[2] and
+                                             box[1] <= points[:,1].mean() <= box[3])
+                    if lm.face is not None and not inside(lm.face):
+                        lm.face = None
+                    owned = [i for i, hand in enumerate(lm.hands) if inside(hand)]
+                    lm.hands = [lm.hands[i] for i in owned]
+                    if hasattr(lm, 'handedness'):
+                        lm.handedness = [lm.handedness[i] for i in owned if i < len(lm.handedness)]
+                    scene.people[pid] = lm
                     state['error'] = ''
                 except Exception as exc:
                     state['error'] = type(exc).__name__
@@ -124,7 +141,9 @@ class FramePipeline:
                 # Select by visible mask proximity, so a long object's tip is not missed.
                 ranked = [(object_proximity(d,lm,f,self.cfg.get('quality',{})),d) for d in objects]
                 _, obj = min(ranked,key=lambda item: item[0]['object_d_relative']
-                             if math.isfinite(item[0]['object_d_relative']) else math.inf)
+                             if math.isfinite(item[0]['object_d_relative']) else
+                             item[0]['candidate_object_d_relative']
+                             if math.isfinite(item[0]['candidate_object_d_relative']) else math.inf)
                 if state['object_box'] is not None and iou(state['object_box'], obj.box) < .2:
                     state['processor'].reset()
                     f['history_reset'] = True
@@ -176,7 +195,9 @@ class FramePipeline:
                 f[column] = '' if column == 'obj_class' else math.nan
             out = state['processor'].step(f)
             out.update(person_id=pid, session_id=self.session_id)
-            rows.append(f); outputs.append(out)
+            rows.append(f)
+            if pid not in retired:
+                outputs.append(out)
             if pid in retired or not source_ok:
                 if state['landmarks'] is not None:
                     state['landmarks'].close()

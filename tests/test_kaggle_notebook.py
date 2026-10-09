@@ -1,10 +1,12 @@
 import ast
 import json
 from pathlib import Path
+import pytest
 
-def test_embedded_notebook_matches_current_source_and_parses():
+@pytest.mark.parametrize('filename', ['childsafe_expanded_kaggle.ipynb', 'childsafe_kaggle.ipynb'])
+def test_embedded_notebook_matches_current_source_and_parses(filename):
     root=Path(__file__).resolve().parents[1]
-    nb=json.loads((root/'notebooks/childsafe_expanded_kaggle.ipynb').read_text(encoding='utf-8'))
+    nb=json.loads((root/'notebooks'/filename).read_text(encoding='utf-8'))
     assert nb['nbformat']==4
     ids=[cell['id'] for cell in nb['cells']]
     assert len(ids)==len(set(ids))

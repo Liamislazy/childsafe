@@ -96,14 +96,22 @@ class ElevatedQuality:
 
 
 def object_proximity(detection, lm, f, cfg):
-    mask_ok = (detection is not None and detection.mask is not None and
+    mask_present = (detection is not None and detection.mask is not None and
                detection.mask.shape == (lm.height,lm.width) and
-               np.count_nonzero(detection.mask) >= cfg.get('min_mask_px',16) and
-               detection.confidence >= cfg.get('min_mask_conf',.6)) if lm is not None else False
+               np.count_nonzero(detection.mask) >= cfg.get('min_mask_px',16)) if lm is not None else False
+    mask_ok = mask_present and detection.confidence >= cfg.get('min_mask_conf',.6)
+    observable = (f.get('mouth_visible',False) and f.get('hand_ok',False) and
+                  not f.get('association_ambiguous',False) and
+                  'hand too small' not in f.get('quality_reasons',[]))
     trusted = (mask_ok and f.get('mouth_visible',False) and f.get('hand_ok',False) and
                not f.get('association_ambiguous',False) and 'hand too small' not in f.get('quality_reasons',[]))
     d_px = mask_region_distance(detection.mask,lm.face[MOUTH_POLYGON,:2]) if trusted else math.nan
+    # Low-confidence localization can request attention, but never supplies
+    # confirmed evidence or dwell toward a danger alert.
+    candidate = (mask_present and observable and detection.confidence >= cfg.get('min_candidate_mask_conf',.5))
+    candidate_px = mask_region_distance(detection.mask,lm.face[MOUTH_POLYGON,:2]) if candidate else math.nan
     return dict(mask_reliable=mask_ok, proximity_evidence=bool(trusted), object_d_px=d_px,
                 object_d_relative=d_px/max(f.get('face_width',1),1) if trusted else math.nan,
+                candidate_object_d_relative=candidate_px/max(f.get('face_width',1),1) if candidate else math.nan,
                 object_label=detection.label if detection is not None else '',
                 object_conf=detection.confidence if detection is not None else math.nan)
