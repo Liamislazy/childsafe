@@ -20,6 +20,7 @@ KGAT_*
 access_token
 .env
 *.egg-info/
-data/external/
 .runtime-deps/
 Ultralytics/
+data/external/
+data/detector/

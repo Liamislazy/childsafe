@@ -21,7 +21,7 @@ OI = ROOT / "data" / "external" / "openimages"
 
 
 def predict(model, ckpt, paths, device):
-    tf = eval_transform(ckpt["img_size"])
+    tf = eval_transform(ckpt['img_size'], preprocessing=ckpt.get('preprocessing','center_crop'))
     out = []
     with torch.no_grad():
         for i in range(0, len(paths), 64):
@@ -30,11 +30,14 @@ def predict(model, ckpt, paths, device):
     p = softmax(np.concatenate(out), ckpt["temperature"])
     classes = np.array(ckpt["classes"])
     unsafe = np.array([ckpt["binary_map"][c] == "unsafe" for c in classes])
-    return classes[p.argmax(1)], p[:, unsafe].sum(1)
+    unknown = np.array([ckpt['binary_map'][c] == 'unknown' or c in ('other','unknown','empty_hand') for c in classes])
+    return classes[p.argmax(1)], p[:, unsafe].sum(1), p.max(1), p[:,unknown].sum(1)
 
 
-def status(pu, thr):
-    return np.where(np.maximum(pu, 1 - pu) < thr, "uncertain", np.where(pu >= 0.5, "unsafe", "safe"))
+def status(pu, thr, class_conf, predicted, unknown_mass):
+    rejected = ((np.maximum(pu,1-pu) < thr) | (class_conf < thr) |
+                np.isin(predicted,['other','unknown','empty_hand']) | (unknown_mass >= .5))
+    return np.where(rejected,'uncertain',np.where(pu >= .5,'unsafe','safe'))
 
 
 def main():
@@ -58,13 +61,13 @@ def main():
     for spec in args.model:
         name, path = spec.split("=", 1)
         model, ck = load_checkpoint(path, device)
-        pred, pu = predict(model, ck, cs_paths, device)
+        pred, pu, _, _ = predict(model, ck, cs_paths, device)
         y_uns = cs.label.eq("unsafe").to_numpy()
         r = {"model": name, "classes": len(ck["classes"]),
              "ChildSUn acc": (pred == cs.category.to_numpy()).mean(),
              "ChildSUn unsafe recall": (pu[y_uns] >= 0.5).mean()}
-        pred, pu = predict(model, ck, oi_paths, device)
-        st = status(pu, thr)
+        pred, pu, conf, unknown = predict(model, ck, oi_paths, device)
+        st = status(pu,thr,conf,pred,unknown)
         known = oi.category.ne("other").to_numpy()
         y = oi.category.to_numpy()
         y_uns = oi.category.isin(unsafe_cls).to_numpy()
@@ -98,7 +101,7 @@ def main():
             f"ChildSUn test = canonical group split (checksum 42e3fb2547c5).\n"
             f"Shared classes in Open Images: few scissors ({int((oi.category == 'scissors').sum())}), heaters "
             f"({int((oi.category == 'heater').sum())}) and sockets ({int((oi.category == 'socket').sum())}); no baby items.\n\n"
-            f"## Summary\n\n{md(t)}\n\n'called unsafe' = calibrated P(unsafe) >= 0.5 and confidence >= {thr} "
+            f"## Summary\n\n{md(t)}\n\n'called unsafe' = calibrated P(unsafe) >= 0.5, category and binary confidence >= {thr}, excluding unknown/other predictions. "
             f"(below that it is 'uncertain', which the alert layer treats as caution).\n\n"
             f"## Share of 'other' objects called unsafe, by object\n\n{md(o)}\n")
     out = Path(cfg["paths"]["docs"]) / "results_openimages.md"

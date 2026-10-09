@@ -33,10 +33,11 @@ _CACHE: dict = {}
 def _cached_images(df, root, size, preprocessing="center_crop"):
     """Decode + resize + center-crop once; corruption passes reuse these (no DataLoader worker re-spawn,
     which costs tens of seconds per pass on Windows)."""
-    key = (str(root), tuple(df["path"]), tuple(df["source"]) if "source" in df else (), size, preprocessing)
+    paths = image_paths(df, root)
+    key = (tuple(str(p.resolve()) for p in paths), size, preprocessing)
     if key not in _CACHE:
         tf = T.Compose(eval_transform(size, preprocessing=preprocessing).transforms[:-2])
-        _CACHE[key] = [tf(Image.open(p).convert("RGB")) for p in image_paths(df, root)]
+        _CACHE[key] = [tf(Image.open(p).convert('RGB')) for p in paths]
     return _CACHE[key]
 
 
@@ -57,7 +58,7 @@ def _eval_df(model, ckpt, df, root, device, cfg, corruption=None, plot_prefix=No
 def _unknown_report(model, ckpt, df, root, device, cfg) -> dict:
     from childsafe.classifier.calibration import softmax
     size = ckpt["img_size"]
-    imgs = _cached_images(df, root, size)
+    imgs = _cached_images(df, root, size, ckpt.get('preprocessing', 'center_crop'))
     tail = T.Compose([T.ToTensor(), T.Normalize(MEAN, STD)])
     x = torch.stack([tail(im) for im in imgs])
     lg, _ = run_inference(model, DataLoader(TensorDataset(x, torch.zeros(len(x), dtype=torch.long)), batch_size=64), device)
@@ -67,6 +68,10 @@ def _unknown_report(model, ckpt, df, root, device, cfg) -> dict:
     thr = cfg["calibration"]["reject_threshold"]
     status = np.where(np.maximum(pu, 1 - pu) < thr, "uncertain", np.where(pu >= 0.5, "unsafe", "safe"))
     pred = np.array(ckpt["classes"])[p.argmax(1)]
+    unknown = np.array([ckpt['binary_map'][c] == 'unknown' or c in ('other','unknown','empty_hand')
+                        for c in ckpt['classes']])
+    rejected = (p.max(1) < thr) | np.isin(pred,['other','unknown','empty_hand']) | (p[:,unknown].sum(1) >= .5)
+    status[rejected] = 'uncertain'
     out = {}
     for c in sorted(df["category"].unique()):
         m = (df["category"] == c).to_numpy()

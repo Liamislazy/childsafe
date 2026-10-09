@@ -9,7 +9,11 @@
 
 Background, scope and the literature notes are in [docs/handoff.md](docs/handoff.md). Ethics rules are in [docs/ethics.md](docs/ethics.md).
 
-For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Large dataset downloads and pen/coin detector training remain paused.
+For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Pen/coin detector training remains pending.
+
+For the complete ChildSUn + Open Images classification dataset (27,883 images, 11 classes), import [the Kaggle notebook](notebooks/childsafe_expanded_kaggle.ipynb) and follow [the full-data training instructions](docs/kaggle_expanded_training.md). Open Images test stays separate; validation and calibration use different groups.
+
+After downloading `full_dataset_results.zip`, follow [the full-model demo and camera checklist](docs/full_dataset_camera_checklist.md). Both demo launchers recognize the imported checkpoint and use the multi-person object-mask pipeline for live alerts. The browser also offers per-person diagnostics, sound alerts, numeric session export and a separate photo classifier comparison.
 
 ## Setup (Windows, local GPU)
 
@@ -65,3 +69,7 @@ tests/                      pytest (python -m pytest)
 - **Lost mouth landmarks preserve recent risk for at most 0.8 seconds.** Held coordinates never accumulate proximity dwell. Events end with explicit departure, observation-loss, person-exit or disconnect reasons.
 - **Safe objects cap at caution.** Low calibrated confidence becomes "uncertain", which also gives caution.
 - **Known limitations.** Image proximity does not establish physical contact or insertion. A box or hand near the head cannot confirm danger. Pretrained YOLO11n-seg does not locate pens/coins. Elevated thresholds and actual multi-person webcam performance remain unvalidated; this is not ready for real deployment.
+
+## Detector bút và đũa
+
+Luồng train vị trí vật riêng nằm trong [hướng dẫn detector](docs/pen_chopsticks_detector_training.md) và [notebook Kaggle](notebooks/childsafe_detector_kaggle.ipynb). Dữ liệu nguyên khung/bounding box khác với crop phân loại; model hai lớp này cần kiểm chứng trước khi ghép vào camera.

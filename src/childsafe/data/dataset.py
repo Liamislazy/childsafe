@@ -52,7 +52,10 @@ def image_paths(df: pd.DataFrame, root: str | Path | dict) -> list[Path]:
     """root: one folder, or {source: folder} when df has a `source` column (ChildSUn + extra sources)."""
     if isinstance(root, dict):
         src = df["source"] if "source" in df else ["childsun"] * len(df)
-        return [Path(root.get(s, root["childsun"])) / p for s, p in zip(src, df["path"])]
+        # Expanded reviewed manifests already contain absolute paths and may have
+        # no source value for supplemental rows. Resolve those before looking up roots.
+        return [Path(p) if Path(p).is_absolute() else Path(root['childsun' if pd.isna(s) else s]) / p
+                for s, p in zip(src, df['path'])]
     return [Path(root) / p for p in df["path"]]
 
 

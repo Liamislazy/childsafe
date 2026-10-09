@@ -34,6 +34,13 @@ def seed_everything(seed: int):
     random.seed(seed); np.random.seed(seed); torch.manual_seed(seed); torch.cuda.manual_seed_all(seed)
 
 
+def class_balanced_sampler(targets, num_classes, balance):
+    if balance != 'sqrt':
+        return None
+    counts = torch.bincount(targets,minlength=num_classes).float().clamp(min=1)
+    return torch.utils.data.WeightedRandomSampler(counts.rsqrt()[targets],len(targets),replacement=True)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--arch", required=True)
@@ -75,17 +82,12 @@ def main(argv=None):
             missing = set(classes) - set(df.loc[df[col] == part, "category"])
             if missing:
                 raise ValueError(f"{part} missing classes: {sorted(missing)}; collect more independent sources")
-    root = source_roots(cfg)   # ChildSUn + any extra sources (paths may also be absolute, e.g. --manifest)
+    root = source_roots(cfg)   # ChildSUn + any extra sources
     size = tc["img_size"]
 
     def loader(part, tf, shuffle):
         ds = CatalogDataset(df[df[col] == part], root, classes, tf)
-        sampler = None
-        if shuffle and tc.get("balance") == "sqrt":
-            # class-balanced sampling, weight ~ 1/sqrt(class count): rare classes are drawn more often
-            # without fully flattening the distribution (one epoch still = len(ds) draws)
-            counts = torch.bincount(ds.targets, minlength=len(classes)).float().clamp(min=1)
-            sampler = torch.utils.data.WeightedRandomSampler(counts.rsqrt()[ds.targets], len(ds), replacement=True)
+        sampler = class_balanced_sampler(ds.targets,len(classes),tc.get('balance')) if shuffle else None
         return DataLoader(ds, batch_size=bs, shuffle=shuffle and sampler is None, sampler=sampler,
                           num_workers=tc["num_workers"], pin_memory=device.type == "cuda",
                           persistent_workers=tc["num_workers"] > 0, drop_last=shuffle and len(ds) > bs)

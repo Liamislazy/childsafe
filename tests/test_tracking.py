@@ -41,3 +41,34 @@ def test_capacity_and_missing_model():
     assert len(people) == 4 and all(p.ambiguous for p in people)
     from childsafe.vision.detection import SegmentationDetector
     assert not SegmentationDetector('missing.pt').ok
+
+
+def test_slow_identity_hold_does_not_recreate_models_or_display_retired_people():
+    from childsafe.config import load_config
+    from childsafe.pipeline import FramePipeline
+    calls = []
+    class Detector:
+        ok = True
+        def detect(self, rgb): return [person((10,10,90,90))]
+    class Landmarks:
+        def detect(self, rgb, t):
+            calls.append(rgb.shape)
+            return SimpleNamespace(t=t,face=None,hands=[],width=100,height=100)
+        def close(self): pass
+    made = []
+    def factory():
+        made.append(1)
+        return Landmarks()
+    pipeline = FramePipeline(load_config(),None,detector=Detector(),landmark_factory=factory,
+                             classifier=lambda *args:None)
+    rgb = np.full((100,100,3),120,np.uint8)
+    try:
+        ids = []
+        for t in [0,1.3,2.6,7]:
+            _,_,out = pipeline.process(rgb,t)
+            assert len(out['persons']) == 1
+            ids.append(out['persons'][0]['person_id'])
+        assert ids[0] == ids[1] == ids[2] and ids[3] != ids[2]
+        # MediaPipe instances are pooled: the new ID after expiry reuses the released one.
+        assert len(made) == 1 and calls == [(100,100,3)]*4
+    finally: pipeline.close()

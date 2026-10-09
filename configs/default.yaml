@@ -99,6 +99,8 @@ temporal:                   # D1
   window_s: 0.3333333333333333
   required_evidence_s: 0.1
   max_gap_s: 0.25
+  dropout_grace_s: 0.3      # if confirmation returns within this time of the last confirmed frame, dwell resumes
+                            # (paused, not reset; the missing interval is never added). 0 = old behaviour
   d_enter: 0.35             # normalized distance to enter "near" (hysteresis: enter < exit)
   d_exit: 0.50
   n_of_m: [3, 10]           # legacy metadata only; runtime uses the duration window above
@@ -120,6 +122,7 @@ rules:                      # D3
 
 runtime:
   max_people: 4
+  identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
   stale_frame_s: 0.25
   camera_index: 0
   width: 1280
@@ -128,7 +131,13 @@ runtime:
 
 detector:
   weights: models/yolo11n-seg.pt
-  min_conf: 0.5
+  min_conf: 0.5             # people
+  # Objects: thin/small items (fork, knife, spoon) often score 0.3-0.5 with yolo11n. Objects below
+  # quality.min_candidate_mask_conf are never used; between that and min_mask_conf they can only
+  # raise CAUTION. UNTUNED starting value (2026-10-09): validate false alarms per hour on dev sessions.
+  object_min_conf: 0.35
+  device: auto              # GPU when available (yolo11n-seg ~13 ms on RTX 3050 vs ~72 ms on CPU)
+  imgsz: 640
   complete_object_coverage: false # COCO excludes coins/pens; never infer their location
 
 quality:
@@ -145,3 +154,4 @@ quality:
   max_brightness: 220
   min_mask_px: 16
   min_mask_conf: 0.6
+  min_candidate_mask_conf: 0.35 # attention (CAUTION) only; never counts toward confirmed danger. Was 0.5; UNTUNED

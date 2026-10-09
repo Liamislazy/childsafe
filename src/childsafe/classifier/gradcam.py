@@ -14,6 +14,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from PIL import Image
+from torchvision import transforms as T
 
 from childsafe.classifier.calibration import softmax
 from childsafe.classifier.models import gradcam_target_layer, load_checkpoint
@@ -63,8 +64,8 @@ def main(argv=None):
     model, ckpt = load_checkpoint(run / "best.pt", device)
     cam = GradCAM(model, gradcam_target_layer(model, ckpt["arch"]))
     size = ckpt["img_size"]
-    tf = eval_transform(size)
-    show = eval_transform(size).transforms[:2]  # resize + crop only, for display
+    tf = eval_transform(size, preprocessing=ckpt.get("preprocessing", "center_crop"))
+    show = T.Compose(tf.transforms[:-2])  # same spatial preprocessing as model input
 
     if args.images:
         paths = sorted(p for p in Path(args.images).rglob("*") if p.suffix.lower() in IMG_EXT)[: args.n]
@@ -82,7 +83,7 @@ def main(argv=None):
         x = tf(img).unsqueeze(0).to(device).requires_grad_(True)
         heat, logits, target = cam(x)
         prob = softmax(logits[None], ckpt["temperature"])[0]
-        disp = np.asarray(show[1](show[0](img)))
+        disp = np.asarray(show(img))
         vis = overlay(disp, heat)
         label = f"pred {ckpt['classes'][target]} {prob[target]:.2f}" + (f" | true {t}" if t else "")
         vis = cv2.putText(vis.copy(), label, (4, 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)

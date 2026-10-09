@@ -41,5 +41,5 @@ class ObjectClassifier:
         top = np.argsort(-cal)[:3]
         return {"p_unsafe_raw": float(raw[self.unsafe].sum()), "p_unsafe_cal": float(cal[self.unsafe].sum()),
                 "obj_class": self.classes[k], "obj_conf": float(cal[k]),
-                "top3": [(self.classes[i], float(cal[i])) for i in top],
-                "p_unknown_cal": float(cal[self.unknown].sum())}
+                "p_unknown_cal": float(cal[self.unknown].sum()),
+                "top3": [(self.classes[i], float(cal[i])) for i in top]}
