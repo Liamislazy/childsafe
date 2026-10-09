@@ -169,7 +169,11 @@ class FramePipeline:
                      mouth_visible=lm is not None and lm.face is not None,
                      association_ambiguous=pid in ambiguous, calibrated=self.cfg.get('quality', {}).get('calibrated', False),
                      object_coverage=self.cfg.get('detector', {}).get('complete_object_coverage', False),
-                     quality_reasons=[state['error']] if state['error'] else [])
+                     quality_reasons=[state['error']] if state['error'] else [],
+                     # every non-person detection in the frame, assigned or not (diagnostics only)
+                     scene_objects=len(scene.objects),
+                     scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
+                     assigned_objects=len(assigned[pid]))
             obj_result = None
             crop_box = scene.boxes[pid]
             f.update(state['quality'].measure(rgb[crop_box[1]:crop_box[3],crop_box[0]:crop_box[2]],lm,f))
