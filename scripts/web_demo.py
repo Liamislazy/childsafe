@@ -16,11 +16,13 @@ from childsafe.config import ROOT, FULL_DATASET_CHECKPOINT, load_config
 from childsafe.web.app import RuntimeDemo, create_app
 
 RUNS = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs"
+# The FIRST existing checkpoint drives live alerts, so models with an "other" class come first:
+# ChildSUn-only models call most pens/phones knife or socket (docs/results_openimages.md).
 DEFAULT = {"full dataset (Kaggle)": FULL_DATASET_CHECKPOINT,
-           "standard": RUNS / "efficientnet_b0_group" / "best.pt",
-           "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt",
            "robust + other (Open Images)": ROOT / "outputs" / "with_other" / "runs" / "efficientnet_b0_group_robust" / "best.pt",
-           "robust + other (102 OI classes)": ROOT / "outputs" / "with_other_train" / "runs" / "efficientnet_b0_group_robust" / "best.pt"}
+           "standard": RUNS / "efficientnet_b0_group" / "best.pt",
+           "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt"}
+# Not shown by default; add with --model "robust + other (102 OI classes)=outputs/with_other_train/runs/efficientnet_b0_group_robust/best.pt"
 
 
 def main():

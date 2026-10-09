@@ -69,5 +69,6 @@ def test_slow_identity_hold_does_not_recreate_models_or_display_retired_people()
             assert len(out['persons']) == 1
             ids.append(out['persons'][0]['person_id'])
         assert ids[0] == ids[1] == ids[2] and ids[3] != ids[2]
-        assert len(made) == 2 and calls == [(100,100,3)]*4
+        # MediaPipe instances are pooled: the new ID after expiry reuses the released one.
+        assert len(made) == 1 and calls == [(100,100,3)]*4
     finally: pipeline.close()

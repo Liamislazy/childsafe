@@ -146,11 +146,13 @@ class RuntimeDemo(Demo):
         self.t0 = time.perf_counter()
         self.rows = []
         self.recording_full = False
+        self.prev_frame_t = None
 
     def reset(self):
         self.pipeline.reset()
         self.rows = []
         self.recording_full = False
+        self.prev_frame_t = None
 
     def session_csv(self):
         import pandas as pd
@@ -166,6 +168,11 @@ class RuntimeDemo(Demo):
             rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
         with self.lock:
             t = time.perf_counter()-self.t0
+            # Real spacing between frames (server work + browser round trip). This, not server time
+            # alone, is what the alert processor compares with temporal.max_gap_s.
+            prev = getattr(self, 'prev_frame_t', None)
+            frame_gap = t-prev if prev is not None else 0.
+            self.prev_frame_t = t
             scene, _, out = self.pipeline.process(rgb, t)
             if not self.recording_full:
                 if len(self.rows)+len(out['feature_rows']) <= 100000:
@@ -210,15 +217,19 @@ class RuntimeDemo(Demo):
                 limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
             if not people:
                 limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
-            if out['inference_s'] > self.cfg['temporal'].get('max_gap_s',.25):
-                limitations.append('Xử lý chậm hơn khoảng liên tục cho phép; có thể không tích lũy được cảnh báo. Thử một người hoặc máy nhanh hơn.')
+            max_gap = self.cfg['temporal'].get('max_gap_s',.25)
+            if frame_gap > max_gap or out['inference_s'] > max_gap:
+                limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
+                                   f'vượt {max_gap*1000:.0f} ms: lịch sử cảnh báo bị đặt lại nên DANGER không tích lũy được. '
+                                   'Giảm số người trong khung, đóng ứng dụng nặng, hoặc dùng GPU.')
             return {'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
                     'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
                     'green':out['green'], 'observation':out['observation'],
                     'reason':out['reason'], 'limitations':limitations,
                     'notify':any(p['notify'] for p in people),
                     'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
-                    'ms':round(out['inference_s']*1000,1), 'live_model':self.live_name}
+                    'ms':round(out['inference_s']*1000,1), 'frame_gap_ms':round(frame_gap*1000,1),
+                    'max_gap_ms':round(max_gap*1000,1), 'live_model':self.live_name}
 
 
 def create_app(demo: Demo) -> FastAPI:

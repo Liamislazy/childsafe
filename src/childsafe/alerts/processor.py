@@ -75,6 +75,8 @@ class AlertProcessor:
         self.last_step_t = None
         self.confirmed_dwell = 0.
         self.prev_confirmed = False
+        self.last_confirmed_t = None
+        self.paused_dwell = 0.
         self.last_classify_t = None
 
     # ---- D2 cascade -------------------------------------------------------------------
@@ -106,6 +108,7 @@ class AlertProcessor:
             self.prev_d = self.prev_t = None
             self.confirmed_dwell = 0.
             self.prev_confirmed = False
+            self.last_confirmed_t, self.paused_dwell = None, 0.
             self.obj = None
         self.last_step_t = t
         quality, quality_reasons = observation(f)
@@ -163,9 +166,25 @@ class AlertProcessor:
         elif not near:
             self.near_since = None
         confirmed = near and visible and (not modern or f.get('proximity_evidence',False))
-        if confirmed and self.prev_confirmed and gap_ok:
-            self.confirmed_dwell += dt
-        elif not confirmed:
+        # Dwell only grows over observed confirmed-to-confirmed intervals (never from held coordinates).
+        # A brief detector dropout (thin objects flicker for a frame) pauses the dwell instead of
+        # restarting it, so a sustained approach can still reach dwell_danger_s.
+        # Shown dwell is 0 while evidence is missing; a dwell paused by a dropout resumes only if
+        # confirmation returns within dropout_grace_s of the last confirmed frame.
+        grace = tc.get('dropout_grace_s', 0.)
+        within_grace = self.last_confirmed_t is not None and 0 < t-self.last_confirmed_t <= grace
+        if confirmed:
+            if self.prev_confirmed and gap_ok:
+                self.confirmed_dwell += dt
+            elif within_grace and self.paused_dwell > 0:
+                self.confirmed_dwell = self.paused_dwell   # resume; the missing interval is not added
+            self.paused_dwell = 0.
+            self.last_confirmed_t = t
+        else:
+            if self.confirmed_dwell > 0:
+                self.paused_dwell = self.confirmed_dwell
+            if not within_grace:
+                self.paused_dwell = 0.
             self.confirmed_dwell = 0.
         self.prev_confirmed = confirmed
         dwell = self.confirmed_dwell

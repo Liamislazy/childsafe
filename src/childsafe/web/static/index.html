@@ -203,7 +203,9 @@ async function loop(token) {
     frames++;
     const now = performance.now();
     if (now - lastFpsT > 1000) {
-      $("stats").textContent = `${(frames * 1000 / (now - lastFpsT)).toFixed(1)} fps · server ${res.ms} ms · round trip ${(now - t0).toFixed(0)} ms`;
+      const gap = res.frame_gap_ms != null ? ` · frame gap ${res.frame_gap_ms.toFixed(0)}/${res.max_gap_ms.toFixed(0)} ms` : '';
+      $("stats").textContent = `${(frames * 1000 / (now - lastFpsT)).toFixed(1)} fps · server ${res.ms} ms · round trip ${(now - t0).toFixed(0)} ms${gap}`;
+      $("stats").style.color = res.frame_gap_ms > res.max_gap_ms ? 'var(--danger)' : '';
       frames = 0; lastFpsT = now;
     }
   } catch (e) { $("liveErr").textContent = "Server error: " + e.message; }
