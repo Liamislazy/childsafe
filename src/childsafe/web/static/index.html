@@ -61,9 +61,6 @@
   .seen { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
   .seen img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); }
   .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
-  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 30px; text-align: center; color: var(--muted); cursor: pointer; }
-  .drop.over { border-color: var(--accent); }
-  #photoPreview { max-width: 100%; border-radius: 10px; margin-top: 12px; display: none; }
   .hidden { display: none; }
   .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
 </style>
@@ -72,7 +69,6 @@
 <header>
   <h1>ChildSafe — thử cảnh báo camera</h1>
   <span class="privacy">Runs only on this computer: frames are processed in memory and never saved.</span>
-  <div class="tabs"><button id="tabLive" class="on">Live webcam</button><button id="tabPhoto">Photo test</button></div>
 </header>
 
 <main>
@@ -98,63 +94,19 @@
     <div><div id="runtimeStatus" class="card" role="status" aria-live="polite">Camera chưa bật</div><div class="models" id="liveModels"></div></div>
   </section>
 
-  <section id="photo" class="grid hidden">
-    <div class="card">
-      <div id="drop" class="drop">Drop a photo here or click to choose<input id="file" type="file" accept="image/*" hidden></div>
-      <div class="controls">
-        <label>Degrade
-          <select id="pkind"><option value="">none</option></select></label>
-        <label>Severity <span id="psevVal">0</span>
-          <input id="psev" type="range" min="0" max="5" value="0"></label>
-      </div>
-      <img id="photoPreview" alt="">
-      <div class="note">The whole photo is classified. Uncertain means low confidence or an unrecognized object (other); it does not mean safe.</div>
-    </div>
-    <div class="models" id="photoModels"></div>
-  </section>
 </main>
 
 <script>
 const $ = id => document.getElementById(id);
-let info = null, running = false, stream = null, frames = 0, lastFpsT = performance.now(), photoBlob = null;
+let info = null, running = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
 const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
 
-function modelCard(name, label) {
-  return `<div class="card model" data-m="${name}">
-    <h3>${name}</h3><div class="sub">${label}</div>
-    <div class="level">-</div><div class="reason"></div>
-    <div class="row"><span>P(unsafe), calibrated</span><span class="pu">-</span></div>
-    <div class="bar"><div></div></div>
-    <div class="row"><span>object</span><span class="st"></span></div>
-    <div class="row dist"><span>distance / near / dwell</span><span class="dv">-</span></div>
-    <ol class="top"></ol></div>`;
-}
-
-function fillCard(root, name, m, live) {
-  const c = root.querySelector(`[data-m="${name}"]`);
-  const lv = c.querySelector(".level");
-  if (live) { lv.className = "level " + (m.level === 0 && !m.green ? "limited" : m.level_name);
-    lv.textContent = m.level_name.toUpperCase() + " / " + (m.observation || "degraded");
-              c.querySelector(".reason").textContent = m.reason || ""; }
-  else { lv.className = "level " + (m.status === "unsafe" ? "danger" : m.status === "safe" ? "normal" : "caution");
-         lv.textContent = m.status.toUpperCase(); c.querySelector(".dist").classList.add("hidden"); }
-  const pu = m.p_unsafe;
-  c.querySelector(".pu").textContent = pu == null ? "-" : pu.toFixed(2);
-  c.querySelector(".bar > div").style.width = pu == null ? "0" : (pu * 100).toFixed(0) + "%";
-  const st = live ? m.obj_status : m.status;
-  c.querySelector(".st").innerHTML = `<span class="badge ${st}">${st}</span>`;
-  if (live) c.querySelector(".dv").textContent =
-      (m.d == null ? "-" : m.d.toFixed(2)) + " / " + (m.near ? "yes" : "no") + " / " + m.dwell.toFixed(1) + " s";
-  c.querySelector(".top").innerHTML = (m.top3 || []).map(([k, p]) => `<li>${k} <b>${(p * 100).toFixed(0)}%</b></li>`).join("");
-}
-
 async function loadInfo() {
   info = await (await fetch("/api/info")).json();
-  for (const sel of [$("kind"), $("pkind")])
+  for (const sel of [$("kind")])
     for (const k of info.corruptions) sel.insertAdjacentHTML("beforeend", `<option value="${k}">${k.replace("_", " ")}</option>`);
   $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera để kiểm tra người, tay, miệng và vật.';
-  $("photoModels").innerHTML = Object.entries(info.models).map(([n, l]) => modelCard(n, l)).join("");
 }
 
 // ---------- live ----------
@@ -285,15 +237,6 @@ function draw(res) {
   }
 }
 
-// ---------- photo ----------
-async function classifyPhoto() {
-  if (!photoBlob) return;
-  const q = new URLSearchParams({ kind: $("pkind").value, severity: $("psev").value });
-  const res = await (await fetch("/api/image?" + q, { method: "POST", body: photoBlob })).json();
-  $("photoPreview").src = res.preview; $("photoPreview").style.display = "block";
-  for (const [n, m] of Object.entries(res.models)) fillCard($("photoModels"), n, m, false);
-}
-function setPhoto(file) { if (file) { photoBlob = file; classifyPhoto(); } }
 
 // ---------- wiring ----------
 $("startBtn").onclick = start;
@@ -303,17 +246,6 @@ $("testSound").onclick = async () => {
 };
 $("resetBtn").onclick = () => fetch("/api/reset", { method: "POST" });
 $("sev").oninput = () => $("sevVal").textContent = $("sev").value;
-$("psev").oninput = () => { $("psevVal").textContent = $("psev").value; classifyPhoto(); };
-$("pkind").onchange = classifyPhoto;
-$("drop").onclick = () => $("file").click();
-$("file").onchange = e => setPhoto(e.target.files[0]);
-$("drop").ondragover = e => { e.preventDefault(); $("drop").classList.add("over"); };
-$("drop").ondragleave = () => $("drop").classList.remove("over");
-$("drop").ondrop = e => { e.preventDefault(); $("drop").classList.remove("over"); setPhoto(e.dataTransfer.files[0]); };
-$("tabLive").onclick = () => { $("live").classList.remove("hidden"); $("photo").classList.add("hidden");
-                               $("tabLive").classList.add("on"); $("tabPhoto").classList.remove("on"); };
-$("tabPhoto").onclick = () => { $("photo").classList.remove("hidden"); $("live").classList.add("hidden");
-                                $("tabPhoto").classList.add("on"); $("tabLive").classList.remove("on"); };
 loadInfo();
 </script>
 </body>

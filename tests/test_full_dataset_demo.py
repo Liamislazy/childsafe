@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 from childsafe.classifier.calibration import softmax
 from childsafe.config import load_config
 from childsafe.data.dataset import Letterbox
-from childsafe.web.app import Demo, create_app
+from childsafe.web.app import Demo, _prediction_status, create_app
 
 
 @pytest.mark.skipif(not os.environ.get('CHILDSAFE_FULL_DATASET_CKPT'), reason='requires local full-data checkpoint and MediaPipe models')
@@ -29,13 +29,12 @@ def test_downloaded_model_demo_preprocessing_calibration_and_unknown_rejection(m
         encoded = io.BytesIO()
         Image.fromarray(rgb).save(encoded, format='PNG')
         client = TestClient(create_app(demo))
-        result = client.post('/api/image', content=encoded.getvalue())
-        assert result.status_code == 200
-        assert len(result.json()['models']['full dataset (Kaggle)']['top3']) == 3
+        result = clf(rgb)                      # the photo-test endpoint was removed; check the classifier
+        assert len(result['top3']) == 3
         with torch.inference_mode():
             logits = clf.model(clf.tf(Image.fromarray(rgb)).unsqueeze(0).to(clf.device)).cpu().numpy()
         expected = softmax(logits, clf.temperature)[0][clf.unsafe].sum()
-        assert result.json()['models']['full dataset (Kaggle)']['p_unsafe'] == pytest.approx(float(expected))
+        assert result['p_unsafe_cal'] == pytest.approx(float(expected))
         # Exercise actual checkpoint class ordering/binary map, where other is
         # encoded safe for training but must remain uncertain in the demo.
         def force_other(x):
@@ -43,8 +42,9 @@ def test_downloaded_model_demo_preprocessing_calibration_and_unknown_rejection(m
             out[:, clf.classes.index('other')] = 20.
             return out
         monkeypatch.setattr(clf.model, 'forward', force_other)
-        photo = client.post('/api/image', content=encoded.getvalue()).json()['models']['full dataset (Kaggle)']
-        assert photo['status'] == 'uncertain' and photo['top3'][0][0] == 'other'
+        photo = clf(rgb)
+        assert _prediction_status(photo, cfg['calibration']['reject_threshold']) == 'uncertain'
+        assert photo['top3'][0][0] == 'other'
         frame = client.post('/api/frame?mode=full', content=encoded.getvalue())
         assert frame.status_code == 200
         live = frame.json()['models']['full dataset (Kaggle)']

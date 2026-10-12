@@ -22,7 +22,7 @@ Môi trường Python 3.12 cần các dependency trong `requirements-runtime.txt
 .venv\Scripts\python scripts\web_demo.py
 ```
 
-Mở `http://127.0.0.1:8000`. Live webcam dùng checkpoint đầu tiên (`full dataset (Kaggle)` mặc định) qua đầy đủ pipeline người, tay, miệng, mask vật và cảnh báo riêng theo ID. Tab Photo test vẫn dùng để thử từng ảnh đồ vật. `other`, vật không nhận dạng và confidence thấp phải trả `uncertain`, kể cả khi P(unsafe) thấp. Letterbox và temperature được lấy tự động từ checkpoint.
+Mở `http://127.0.0.1:8000`. Live webcam dùng checkpoint đầu tiên (`full dataset (Kaggle)` mặc định) qua đầy đủ pipeline người, tay, miệng, mask vật và cảnh báo riêng theo ID. (Tab Photo test đã được gỡ; demo chỉ còn camera trực tiếp.) `other`, vật không nhận dạng và confidence thấp phải trả `uncertain`, kể cả khi P(unsafe) thấp. Letterbox và temperature được lấy tự động từ checkpoint.
 
 Có thể mở server nền trên Windows bằng `powershell -ExecutionPolicy Bypass -File scripts\start_web_demo.ps1`. Dừng server đã mở bằng script này với `powershell -ExecutionPolicy Bypass -File scripts\stop_web_demo.ps1`. Log khởi động nằm ở `outputs/web_demo/`. Chỉ mở một server trên mỗi port; đóng server cũ trước khi khởi động lại.
 

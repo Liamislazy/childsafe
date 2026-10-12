@@ -1,9 +1,9 @@
-"""Local multi-person alert runtime, with a separate photo classifier comparison.
+"""Local multi-person live-camera alert runtime.
 
     python scripts/web_demo.py
     python scripts/web_demo.py --model standard=path/to/best.pt --model robust=path/to/best.pt
 
-The first selected checkpoint drives live alerts. Open http://127.0.0.1:8000 and
+The first existing checkpoint drives live alerts (only that one is loaded). Open http://127.0.0.1:8000 and
 click "Start camera". Localhost only; frames are never saved. Numeric session
 features remain in memory until reset and can be downloaded explicitly.
 """

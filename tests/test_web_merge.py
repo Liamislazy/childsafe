@@ -32,14 +32,6 @@ def encoded_image():
     return stream.getvalue()
 
 
-def test_photo_demo_does_not_label_other_safe():
-    client = TestClient(create_app(demo()))
-    response = client.post('/api/image',content=encoded_image())
-    assert response.status_code == 200
-    assert response.json()['models']['comparison']['status'] == 'uncertain'
-    assert response.json()['models']['comparison']['top3'][0][0] == 'other'
-
-
 def test_live_demo_has_limited_observation_without_contact_detector():
     client = TestClient(create_app(demo()))
     response = client.post('/api/frame?mode=full',content=encoded_image())

@@ -136,27 +136,16 @@ class Demo:
             out["ms"] = round((time.perf_counter() - t_start) * 1000, 1)
         return out
 
-    def image(self, body: bytes, kind: str, severity: int) -> dict:
-        rgb = _decode(body)
-        if kind in KINDS and severity > 0:
-            rgb = corrupt(rgb, kind, severity, seed=0)
-        with self.lock:
-            res = {name: clf(rgb) for name, clf in self.classifiers.items()}
-        return {"preview": _thumb(rgb, 320),
-                "models": {n: {"p_unsafe": r["p_unsafe_cal"], "top3": r["top3"],
-                               'status':_prediction_status(r,self.cfg['calibration']['reject_threshold'])}
-                           for n, r in res.items()}}
-
 
 class RuntimeDemo(Demo):
-    """One full multi-person runtime for live frames; photo comparison stays separate."""
+    """One full multi-person runtime for live camera frames (the photo-test tab was removed)."""
     def __init__(self, cfg, models):
         if not models:
             raise ValueError('A live checkpoint is required')
         self.cfg, self.lock = cfg, threading.Lock()
-        self.paths = models
-        self.classifiers = {name: ObjectClassifier(path) for name, path in models.items()}
-        self.live_name = next(iter(models))
+        self.live_name = next(iter(models))            # only the live model is loaded
+        self.paths = {self.live_name: models[self.live_name]}
+        self.classifiers = {self.live_name: ObjectClassifier(self.paths[self.live_name])}
         self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
         self.t0 = time.perf_counter()
         self.rows = []
@@ -287,10 +276,6 @@ def create_app(demo: Demo) -> FastAPI:
     @app.post("/api/frame")
     async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand"):
         return JSONResponse(demo.frame(await request.body(), kind, severity, mode))
-
-    @app.post("/api/image")
-    async def image(request: Request, kind: str = "", severity: int = 0):
-        return JSONResponse(demo.image(await request.body(), kind, severity))
 
     @app.post("/api/reset")
     def reset():

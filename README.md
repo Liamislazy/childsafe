@@ -39,7 +39,7 @@ Use Python 3.12, because MediaPipe has no wheels for 3.14. On Colab, run `pip in
 | A5. Robust augmentation | `python -m childsafe.classifier.train --arch efficientnet_b0 --split group --robust` | |
 | Grad-CAM | `python -m childsafe.classifier.gradcam --run outputs/runs/efficientnet_b0_group` | `gradcam/*.jpg` |
 | Live demo | `python scripts/run_webcam.py --ckpt outputs/runs/efficientnet_b0_group/best.pt` | `outputs/events/*.csv` (no video) |
-| Web demo: two models side by side, degradation slider, photo test | `python scripts/web_demo.py` then open http://127.0.0.1:8000 | nothing saved |
+| Web demo: live camera alerts (person, hands, mouth, object), degradation slider, session download | `python scripts/web_demo.py` then open http://127.0.0.1:8000 | nothing saved |
 | B1. Normalizer stability | `run_webcam.py --no-classifier --log-features --condition ...` then `python scripts/b1_normalization.py --glob ...` | table |
 | E2. Scenario videos to features | `python scripts/extract_features.py --videos data/recordings --ckpt ...` | `outputs/features/*.csv` |
 | D3. Tune on dev (never on test) | `python scripts/evaluate_alerts.py grid --split dev` | `outputs/tuned_config.yaml` |
