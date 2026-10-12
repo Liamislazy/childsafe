@@ -148,7 +148,7 @@ class FramePipeline:
             cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
             bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
             bx1, by1 = int(bx0 + side), int(by0 + side)
-            for d in self.detector.detect(np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
+            for d in self._timed('detector_s',self.detector.detect,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
                 if d.label == 'person':
                     continue
                 box = (d.box[0] + bx0, d.box[1] + by0, d.box[2] + bx0, d.box[3] + by0)
@@ -174,9 +174,8 @@ class FramePipeline:
     def _hand_crop_fallback(self, state, rgb, f, t):
         """YOLO (COCO classes) often misses the small object held at the mouth, and then nothing
         was classified at all. As in the original Module B design, classify the area around the hand
-        instead. A confident unsafe result (>= rules.hand_crop_min_p_unsafe, stricter than the mask
-        path) counts as proximity evidence measured by the hand-to-mouth distance; anything else
-        stays at CAUTION through the normal rules."""
+        instead. Classification describes the crop; without a localized reliable
+        object mask this is suspicion only, never confirmed proximity evidence."""
         rc = self.cfg.get('rules', {})
         if (not rc.get('hand_crop_fallback', False) or self.classifier is None
                 or not f.get('mouth_visible') or not f.get('detector_ok', True)):
@@ -191,7 +190,7 @@ class FramePipeline:
             result = last[1]
         else:
             try:
-                result = self.classifier(rgb, box)
+                result = self._timed('classifier_s',self.classifier,rgb,box)
                 self.classifier_error = ''
                 state['classifier_error'] = ''
             except Exception as exc:
@@ -203,8 +202,6 @@ class FramePipeline:
         if not result:
             return None
         f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop', distance_source='hand')
-        if self._confident_unsafe(result):
-            f.update(proximity_evidence=True, object_d_relative=f['d_face_width'])
         return result
 
     def reset(self, session_id=None):
@@ -214,13 +211,23 @@ class FramePipeline:
         self.tracker.reset()
         self.session_id = self.session_id + 1 if session_id is None else session_id
 
+    def _timed(self, stage, function, *args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            if not hasattr(self,'timings'):
+                self.timings = {}
+            self.timings[stage] = self.timings.get(stage,0.) + time.perf_counter()-start
+
     def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True,
                 processing_deadline=None):
         start = time.perf_counter()
+        self.timings = {}
         h, w = rgb.shape[:2]
         valid = frame_valid and frame_age_s <= self.cfg.get('runtime', {}).get('stale_frame_s', .25)
         scene = SceneLandmarks()
-        detections = self.detector.detect(rgb) if valid and source_ok else []
+        detections = self._timed('detector_s',self.detector.detect,rgb) if valid and source_ok else []
         active, retired = self.tracker.update(detections, t) if valid and source_ok else ([], set())
         active_now = {track.person_id for track in active}
         for pid, state in self.states.items():   # release first, so new IDs reuse these instances
@@ -259,7 +266,7 @@ class FramePipeline:
                     if far and 0 < longest < lc.get('zoom_target_px', 640):
                         scale = min(lc.get('zoom_target_px', 640) / longest, lc.get('zoom_max_scale', 3.))
                         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
-                    lm = state['landmarks'].detect(np.ascontiguousarray(image), t)
+                    lm = self._timed('landmarks_s',state['landmarks'].detect,np.ascontiguousarray(image),t)
                     lm = to_original(lm, crop, w, h, scale)
                     inside = lambda points: (box[0] <= points[:,0].mean() <= box[2] and
                                              box[1] <= points[:,1].mean() <= box[3])
@@ -311,7 +318,7 @@ class FramePipeline:
             obj_result = None
             crop_box = scene.boxes[pid]
             # Landmarks are in original coordinates; quality crops must use that same image.
-            f.update(state['quality'].measure(rgb,lm,f))
+            f.update(self._timed('quality_s',state['quality'].measure,rgb,lm,f))
             if state['error']:
                 f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
@@ -339,7 +346,7 @@ class FramePipeline:
                         box = tuple(int(v) for v in obj.box)
                         box = (max(0,box[0]),max(0,box[1]),min(w,box[2]),min(h,box[3]))
                         if box[2]-box[0] > 8 and box[3]-box[1] > 8:
-                            obj_result = self.classifier(rgb, box)
+                            obj_result = self._timed('classifier_s',self.classifier,rgb,box)
                             state['classified'] = (t, obj.box)
                         else:
                             self._clear_classification(state)
@@ -384,9 +391,7 @@ class FramePipeline:
                 recent[1] if recent is not None and 0 <= t-recent[0] <= 1. else None)
             near_values = [v for v in (d_object, hand_distance) if math.isfinite(v)]
             d_near = min(near_values) if near_values else math.nan
-            if (not f.get('proximity_evidence') and obj is not None and cls and self._confident_unsafe(cls)
-                    and f.get('mouth_visible') and pid not in ambiguous and math.isfinite(d_near) and d_near <= d_exit):
-                f.update(proximity_evidence=True, object_d_relative=d_near, evidence_source='classifier')
+            # Classification cannot upgrade a weak mask/box or hand position to contact evidence.
             f['d_object'], f['d_hand'] = d_object, hand_distance
             f['distance_source'] = ('object' if math.isfinite(d_object) and
                                     (not math.isfinite(hand_distance) or d_object <= hand_distance) else 'hand')
@@ -437,6 +442,8 @@ class FramePipeline:
                                           if state['classifier_error']), '')
         for f in rows:
             f['inference_s'] = inference_s
+            f.update({name:self.timings.get(name,0.) for name in ('detector_s','landmarks_s','classifier_s','quality_s')})
+            f['other_s'] = max(0.,inference_s-sum(self.timings.values()))
         # A later person's work may expire the whole shared source sample.
         if processing_deadline is not None and time.perf_counter() > processing_deadline:
             outputs = []
