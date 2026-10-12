@@ -60,9 +60,19 @@ class ElevatedQuality:
 
     def measure(self, rgb, lm, features):
         qc = self.cfg
+        h, w = rgb.shape[:2]
+        bounds = (0, 0, w, h)
+        if lm is not None and lm.face is not None:
+            points = lm.face[:, :2]
+            if np.isfinite(points).all():
+                lo, hi = np.floor(points.min(0)).astype(int), np.ceil(points.max(0)).astype(int) + 1
+                bounds = (max(0, int(lo[0])), max(0, int(lo[1])),
+                          min(w, int(hi[0])), min(h, int(hi[1])))
+        x0, y0, x1, y1 = bounds
+        roi = rgb[y0:y1, x0:x1] if x1 > x0 and y1 > y0 else rgb[:0, :0]
         # Same channel-mean gray and 4-neighbour Laplacian variance as before, computed with
         # OpenCV (about 2x faster on a 1280x720 frame).
-        gray = np.add.reduce(rgb, axis=2, dtype=np.uint16).astype(np.float32) * np.float32(1/3)
+        gray = np.add.reduce(roi, axis=2, dtype=np.uint16).astype(np.float32) * np.float32(1/3)
         brightness = float(cv2.mean(gray)[0]) if gray.size else 0.
         if min(gray.shape[:2]) > 2:
             lap = cv2.filter2D(gray, cv2.CV_32F, LAPLACE, borderType=cv2.BORDER_REPLICATE)[1:-1,1:-1]
@@ -76,10 +86,12 @@ class ElevatedQuality:
             reasons.append('blurred image')
         visible = lm is not None and lm.face is not None
         yaw = pitch = math.nan
+        face_px = float(features.get('face_width', 0))
+        mouth_px = hand_px = 0.
+        zoom = float(getattr(lm, 'scale', 1.) or 1.) if lm is not None else 1.
         if visible:
-            # Sizes are judged at the resolution the landmarks were found at (zoomed crop for far people).
-            zoom = float(getattr(lm, 'scale', 1.) or 1.)
-            if features.get('face_width',0) * zoom < qc.get('min_face_px',40):
+            # Coordinates have already been mapped to original pixels. Zoom adds no detail.
+            if face_px < qc.get('min_face_px',40):
                 reasons.append('face too small')
                 visible = False
             matrix = getattr(lm,'face_matrix',None)
@@ -96,7 +108,8 @@ class ElevatedQuality:
                     reasons.append('mouth hidden by head orientation')
                     visible = False
             mouth = lm.face[MOUTH_POLYGON,:2]
-            if np.ptp(mouth[:,0]) * zoom < qc.get('min_mouth_px',4):
+            mouth_px = float(np.ptp(mouth[:,0]))
+            if mouth_px < qc.get('min_mouth_px',4):
                 reasons.append('mouth too small')
                 visible = False
             current = mouth.mean(0)
@@ -108,14 +121,18 @@ class ElevatedQuality:
             self.prev_mouth,self.prev_t = current,lm.t
             if lm.hands:
                 hand_extent = max(float(np.ptp(hand[:,:2],axis=0).max()) for hand in lm.hands)
-                if hand_extent * zoom < qc.get('min_hand_px',10):
+                hand_px = hand_extent
+                if hand_extent < qc.get('min_hand_px',10):
                     reasons.append('hand too small')
             else:
                 reasons.append('no observable hand')
         if 'poor exposure' in reasons or 'blurred image' in reasons:
             visible = False
         return dict(mouth_visible=visible, head_yaw=yaw, head_pitch=pitch,
-                    brightness=brightness, sharpness=sharpness, quality_reasons=reasons)
+                    brightness=brightness, sharpness=sharpness, quality_reasons=reasons,
+                    quality_schema_version=3, quality_roi_x0=x0, quality_roi_y0=y0,
+                    quality_roi_x1=x1, quality_roi_y1=y1, landmark_scale=zoom,
+                    original_face_px=face_px, original_mouth_px=mouth_px, original_hand_px=hand_px)
 
 
 def object_proximity(detection, lm, f, cfg):

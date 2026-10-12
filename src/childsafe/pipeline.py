@@ -309,7 +309,8 @@ class FramePipeline:
                      assigned_objects=len(assigned[pid]))
             obj_result = None
             crop_box = scene.boxes[pid]
-            f.update(state['quality'].measure(rgb[crop_box[1]:crop_box[3],crop_box[0]:crop_box[2]],lm,f))
+            # Landmarks are in original coordinates; quality crops must use that same image.
+            f.update(state['quality'].measure(rgb,lm,f))
             if state['error']:
                 f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
