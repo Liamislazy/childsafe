@@ -86,6 +86,8 @@ gọi tính năng là hoàn thành hoặc bật chẩn đoán nghẹn tự độ
 Thông tin cần từ nhóm: có sử dụng microphone không; có đối tác chuyên môn và ground truth lâm sàng
 hay chưa. Những thông tin này quyết định lựa chọn model và thiết kế nghiên cứu, không được tự giả định.
 
+Câu trả lời đã ghi ở mục quyết định bên dưới; không yêu cầu nhóm trả lời lại.
+
 ### Quyết định người dùng ngày 12/10/2026
 
 Chọn **hình ảnh + âm thanh trên thiết bị**. Hiện **chưa có chuyên gia hoặc dữ liệu lâm sàng**. Không
@@ -108,3 +110,11 @@ và kiểm chứng; chưa có bằng chứng để bật nhận diện nghẹn t
 Evaluator giữ cả người không có dự đoán trong denominator, không coi nhãn chưa rõ là âm tính,
 tách điểm simulation/clinical và nhóm tuổi/góc nhìn. Một báo cáo điểm cao không tự chứng minh
 ground truth là xác thực hoặc model có giá trị lâm sàng. Không xuất nhãn chẩn đoán từ evaluator.
+
+### Nền đồng bộ hình ảnh và âm thanh
+
+Đã thêm `childsafe.runtime.multimodal` và [giao thức đầu vào](multimodal_feature_protocol.md):
+bộ đệm đặc trưng trong RAM, tách âm thanh phòng khỏi âm thanh đã xác định người,
+kiểm tra clock/cửa sổ, loại dữ liệu cũ sau reconnect. Chưa nối vào runtime, chưa
+capture âm thanh, chưa có producer đặc trưng hay model nghẹn. Cờ `aligned` chỉ
+kiểm tra điều kiện ghép dữ liệu, không phải bằng chứng lâm sàng hoặc nhãn an toàn.
