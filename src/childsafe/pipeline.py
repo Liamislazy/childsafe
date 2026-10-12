@@ -171,6 +171,9 @@ class FramePipeline:
                      object_coverage=self.cfg.get('detector', {}).get('complete_object_coverage', False),
                      quality_reasons=[state['error']] if state['error'] else [],
                      # every non-person detection in the frame, assigned or not (diagnostics only)
+                     person_x0=float(track.box[0]), person_y0=float(track.box[1]),
+                     person_x1=float(track.box[2]), person_y1=float(track.box[3]),
+                     yolo_people=sum(d.label == 'person' for d in detections), tracked=True,
                      scene_objects=len(scene.objects),
                      scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
                      assigned_objects=len(assigned[pid]))
@@ -240,6 +243,7 @@ class FramePipeline:
                      person_left=pid in retired, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s)
             f['object_present'] = False
+            f['tracked'] = False   # held ID, not detected in this frame
             f.update(proximity_evidence=False,mask_reliable=False,object_d_relative=math.nan,
                      object_d_px=math.nan,detector_ok=self.detector.ok,
                      classifier_ok=self.classifier is not None and not self.classifier_error)
