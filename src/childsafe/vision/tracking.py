@@ -1,5 +1,5 @@
 """Conservative temporary IDs; ambiguity always discards identity history."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -10,6 +10,37 @@ def iou(a, b):
     intersection = max(0, x1-x0) * max(0, y1-y0)
     area = lambda x: max(0, x[2]-x[0]) * max(0, x[3]-x[1])
     return intersection / max(area(a)+area(b)-intersection, 1e-9)
+
+
+def _area(b):
+    return max(0, b[2]-b[0]) * max(0, b[3]-b[1])
+
+
+def _intersection(a, b):
+    return max(0, min(a[2], b[2])-max(a[0], b[0])) * max(0, min(a[3], b[3])-max(a[1], b[1]))
+
+
+def dedupe_people(people, containment=.8, width_ratio=.75, height_ratio=.8, top_tolerance=.15):
+    """YOLO sometimes adds a second 'person' box for part of the same body (typically head and
+    upper body). Two overlapping boxes made the tracker mark both ambiguous and hand out two new IDs
+    on every frame. A box is treated as such a duplicate only if it lies mostly inside a larger box,
+    has nearly the same width, is clearly shorter, and shares the larger box's top edge (the head).
+    Kept as separate people: two people crossing (same height), a child or doll on a lap (narrower)
+    and a child standing in front of an adult (top edge lower); those still go through ambiguity."""
+    kept = []
+    for d in sorted(people, key=lambda d: _area(d.box), reverse=True):
+        def duplicate_of(k):
+            kh = max(k.box[3]-k.box[1], 1e-9)
+            return (_intersection(d.box, k.box) >= containment * max(_area(d.box), 1e-9)
+                    and (d.box[2]-d.box[0]) / max(k.box[2]-k.box[0], 1e-9) >= width_ratio
+                    and (d.box[3]-d.box[1]) / kh <= height_ratio
+                    and abs(d.box[1]-k.box[1]) <= top_tolerance * kh)
+        dup = next((i for i, k in enumerate(kept) if duplicate_of(k)), None)
+        if dup is None:
+            kept.append(d)
+        elif d.confidence > kept[dup].confidence:
+            kept[dup] = replace(kept[dup], confidence=d.confidence)
+    return kept
 
 
 @dataclass
@@ -31,13 +62,25 @@ class PersonTracker:
         self.tracks.clear()  # monotonically increasing IDs avoid reuse across source sessions
 
     def update(self, detections, t):
-        people = [d for d in detections if d.label == 'person']
+        people = dedupe_people([d for d in detections if d.label == 'person'])
         overflow = len(people) > self.max_people
         people = sorted(people, key=lambda d: d.confidence, reverse=True)[:self.max_people]
         old = {k: v for k, v in self.tracks.items() if t-v.last_t <= self.hold_s}
         scores = {i: sorted([(iou(d.box, v.box), k) for k, v in old.items()], reverse=True)
                   for i, d in enumerate(people)}
         choices = {i: s[0][1] for i, s in scores.items() if s and s[0][0] >= self.min_iou}
+        # Fast motion at low FPS (or a missed frame) can drop IoU below min_iou for the same person.
+        # One person in view and one remembered ID: same person. With several people, only keep the
+        # ID if the single leftover detection's centre lies inside the old box (grown by 50%).
+        # Alert evidence is not carried over: the processor already resets after a >0.25 s gap.
+        free_d = [i for i in range(len(people)) if i not in choices]
+        free_t = [k for k in old if k not in set(choices.values())]
+        if len(free_d) == 1 and len(free_t) == 1:
+            ob, nb = old[free_t[0]].box, people[free_d[0]].box
+            cx, cy = (nb[0]+nb[2])/2, (nb[1]+nb[3])/2
+            gx, gy = (ob[2]-ob[0])*.25, (ob[3]-ob[1])*.25
+            if (len(people) == 1 and len(old) == 1) or (ob[0]-gx <= cx <= ob[2]+gx and ob[1]-gy <= cy <= ob[3]+gy):
+                choices[free_d[0]] = free_t[0]
         active = []
         retired = set(self.tracks)-set(old)
         for i, d in enumerate(people):

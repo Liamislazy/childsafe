@@ -223,7 +223,8 @@ class FramePipeline:
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             out = state['processor'].step(f, obj_result)
-            out.update(person_id=pid, box=track.box, session_id=self.session_id)
+            out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
+            state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)
                       for k in OBJ_COLUMNS})
             state['features'] = f
@@ -245,7 +246,8 @@ class FramePipeline:
             for column in OBJ_COLUMNS:
                 f[column] = '' if column == 'obj_class' else math.nan
             out = state['processor'].step(f)
-            out.update(person_id=pid, session_id=self.session_id)
+            # held ID: not detected in this frame (kept so a brief miss does not reset its history)
+            out.update(person_id=pid, session_id=self.session_id, visible=False, box=state.get('box'))
             rows.append(f)
             if pid not in retired:
                 outputs.append(out)

@@ -25,6 +25,7 @@ from childsafe.vision.landmarks import LandmarkDetector
 from childsafe.vision.object_classifier import ObjectClassifier, hand_crop_box
 from childsafe.vision.elevated import ElevatedQuality
 from childsafe.pipeline import FramePipeline
+from childsafe.vision.tracking import iou
 
 STATIC = Path(__file__).parent / "static"
 
@@ -43,6 +44,20 @@ def _thumb(rgb: np.ndarray, size: int = 160) -> str:
 
 def _decode(body: bytes) -> np.ndarray:
     return np.asarray(Image.open(io.BytesIO(body)).convert("RGB"))
+
+
+def _displayed_people(persons):
+    """People detected in this frame, plus held IDs (briefly missed) only when no detected person
+    is at the same place. Otherwise a person who got a new ID was shown twice ("ghost" cards)."""
+    seen = [p for p in persons if p.get('visible', True)]
+    def near(held, other):
+        hb, ob = held.get('box'), other.get('box')
+        if hb is None or ob is None:
+            return True
+        cx, cy = (ob[0]+ob[2])/2, (ob[1]+ob[3])/2
+        return iou(hb, ob) > 0 or (hb[0] <= cx <= hb[2] and hb[1] <= cy <= hb[3])
+    held = [p for p in persons if not p.get('visible', True) and not any(near(p, o) for o in seen)]
+    return seen + held
 
 
 def _prediction_status(obj, threshold):
@@ -180,7 +195,7 @@ class RuntimeDemo(Demo):
                 else:
                     self.recording_full = True
             people = []
-            for person in out['persons']:
+            for person in _displayed_people(out['persons']):
                 pid = person['person_id']
                 lm = scene.people.get(pid)
                 features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
