@@ -58,7 +58,8 @@ class FramePipeline:
             except Exception as exc:
                 self.classifier_error = type(exc).__name__
         self.tracker = PersonTracker(max_people=cfg.get('runtime', {}).get('max_people', 4),
-                                     hold_s=cfg.get('runtime', {}).get('identity_hold_s', 3.))
+                                     hold_s=cfg.get('runtime', {}).get('identity_hold_s', 3.),
+                                     primary_only=cfg.get('runtime', {}).get('primary_person_only', False))
         self.states, self.session_id = {}, 0
         # Creating a MediaPipe face+hand landmarker costs ~0.4 s. Ambiguous (overlapping) people get a
         # new temporary ID on every frame, so creating one per ID stalled the loop to >1 s per frame

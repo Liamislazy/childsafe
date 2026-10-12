@@ -52,8 +52,12 @@ class Track:
 
 
 class PersonTracker:
-    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15):
+    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15, primary_only=False):
         self.max_people, self.hold_s = max_people, hold_s
+        # Opt-in for a one-subject setup: follow only the largest person box and ignore the rest
+        # (e.g. a photo, poster or screen with a face). Do NOT use when the subject may be the
+        # smaller one, such as a doll or child next to an adult.
+        self.primary_only = primary_only
         self.min_iou, self.margin = min_iou, margin
         self.tracks = {}
         self.next_id = 1
@@ -63,6 +67,8 @@ class PersonTracker:
 
     def update(self, detections, t):
         people = dedupe_people([d for d in detections if d.label == 'person'])
+        if self.primary_only and people:
+            people = [max(people, key=lambda d: _area(d.box))]
         overflow = len(people) > self.max_people
         people = sorted(people, key=lambda d: d.confidence, reverse=True)[:self.max_people]
         old = {k: v for k, v in self.tracks.items() if t-v.last_t <= self.hold_s}

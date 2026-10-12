@@ -30,6 +30,8 @@ def main():
     ap.add_argument("--model", action="append", default=[], help="name=path/to/best.pt (repeatable)")
     ap.add_argument("--config", default=None)
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--single-person", action="store_true",
+                    help="follow only the largest person (ignore photos/screens/small faces in view)")
     args = ap.parse_args()
     models = dict(m.split("=", 1) for m in args.model) if args.model else {k: str(v) for k, v in DEFAULT.items() if v.exists()}
     if not models:
@@ -37,7 +39,10 @@ def main():
     for name, p in models.items():
         if not Path(p).exists():
             raise SystemExit(f"checkpoint for '{name}' not found: {p}")
-    demo = RuntimeDemo(load_config(args.config), models)
+    cfg = load_config(args.config)
+    if args.single_person:
+        cfg['runtime']['primary_person_only'] = True
+    demo = RuntimeDemo(cfg, models)
     print(f"open http://127.0.0.1:{args.port}")
     try:
         uvicorn.run(create_app(demo), host="127.0.0.1", port=args.port, log_level="warning")

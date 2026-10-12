@@ -81,3 +81,12 @@ def test_displayed_person_number_is_reused_not_ever_increasing():
     slots = demo._slot([60, 61])                              # a second person gets 2
     assert sorted(slots.values()) == [1, 2]
     assert demo._slot([61, 62]) == {61: 2, 62: 1}               # freed number 1 is reused
+
+
+def test_single_person_mode_ignores_a_small_second_person():
+    small = person((452, 334, 576, 480), .7)        # e.g. photo/doll at the bottom right (seen in a real session)
+    frames = [[person((96, 166, 564, 480)), small]] * 10
+    ids, amb = run(PersonTracker(hold_s=3, primary_only=True), frames)
+    assert all(len(f) == 1 for f in ids) and len({i for f in ids for i in f}) == 1 and not any(a for f in amb for a in f)
+    ids, _ = run(PersonTracker(hold_s=3), frames)   # default: both are tracked
+    assert all(len(f) == 2 for f in ids)

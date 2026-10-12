@@ -126,6 +126,7 @@ rules:                      # D3
 
 runtime:
   max_people: 4
+  primary_person_only: false # opt-in (--single-person): follow only the largest person; not for doll/child-next-to-adult tests
   identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
   stale_frame_s: 0.25
   camera_index: 0

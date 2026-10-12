@@ -61,6 +61,8 @@ def main():
     ap.add_argument("--ckpt", default=str(FULL_DATASET_CHECKPOINT),
                     help="local checkpoint; defaults to the imported full-data Kaggle model")
     ap.add_argument("--no-classifier", action="store_true")
+    ap.add_argument("--single-person", action="store_true",
+                    help="follow only the largest person (ignore photos/screens/small faces in view)")
     ap.add_argument("--config", default=None)
     ap.add_argument("--camera", type=int)
     ap.add_argument('--source-env', help='environment variable holding video URL; do not put credentials in CLI/logs')
@@ -70,6 +72,8 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    if args.single_person:
+        cfg['runtime']['primary_person_only'] = True
     rc = cfg["runtime"]
     ckpt = None if args.no_classifier else args.ckpt
     if ckpt is not None and not Path(ckpt).is_file():
