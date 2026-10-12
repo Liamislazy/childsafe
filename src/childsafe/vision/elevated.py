@@ -117,10 +117,18 @@ class ElevatedQuality:
 
 
 def object_proximity(detection, lm, f, cfg):
-    mask_present = (detection is not None and detection.mask is not None and
-               detection.mask.shape == (lm.height,lm.width) and
-               np.count_nonzero(detection.mask) >= cfg.get('min_mask_px',16)) if lm is not None else False
-    mask_ok = mask_present and detection.confidence >= cfg.get('min_mask_conf',.6)
+    mask = detection.mask if detection is not None else None
+    from_box = False
+    if detection is not None and mask is None and lm is not None:
+        # No segmentation mask: use the object's box, so the distance is still object -> mouth.
+        # A box is never trusted as confirmed (DANGER) evidence, only as a candidate.
+        mask = np.zeros((lm.height, lm.width), bool)
+        x0, y0, x1, y1 = (int(round(v)) for v in detection.box)
+        mask[max(y0, 0):max(y1, 0), max(x0, 0):max(x1, 0)] = True
+        from_box = True
+    mask_present = (mask is not None and mask.shape == (lm.height,lm.width) and
+                    np.count_nonzero(mask) >= cfg.get('min_mask_px',16)) if lm is not None else False
+    mask_ok = mask_present and not from_box and detection.confidence >= cfg.get('min_mask_conf',.6)
     observable = (f.get('mouth_visible',False) and f.get('hand_ok',False) and
                   not f.get('association_ambiguous',False) and
                   'hand too small' not in f.get('quality_reasons',[]))
@@ -130,7 +138,7 @@ def object_proximity(detection, lm, f, cfg):
     # confirmed evidence or dwell toward a danger alert.
     candidate = (mask_present and observable and detection.confidence >= cfg.get('min_candidate_mask_conf',.5))
     # trusted implies candidate whenever min_candidate_mask_conf <= min_mask_conf: measure once.
-    measured = (mask_region_distance(detection.mask,lm.face[MOUTH_POLYGON,:2])
+    measured = (mask_region_distance(mask,lm.face[MOUTH_POLYGON,:2])
                 if trusted or candidate else math.nan)
     d_px = measured if trusted else math.nan
     candidate_px = measured if candidate else math.nan

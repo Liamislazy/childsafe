@@ -124,7 +124,7 @@ class FramePipeline:
                             and result.get('obj_conf', 0) >= threshold
                             and result.get('obj_class') not in ('other', 'unknown', 'empty_hand')
                             and result.get('p_unknown_cal', 0) < .5)
-        f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop')
+        f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop', distance_source='hand')
         if confident_unsafe:
             f.update(proximity_evidence=True, object_d_relative=f['d_face_width'])
         return result
@@ -258,6 +258,8 @@ class FramePipeline:
             f.update(proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{})))
             f['object_present'] = obj is not None
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
+            f['distance_source'] = ('object' if f.get('proximity_evidence') or
+                                    math.isfinite(f.get('candidate_object_d_relative', math.nan)) else 'hand')
             hand_distance = f.get('d_face_width',math.nan)
             suspicious_hand = math.isfinite(hand_distance) and hand_distance <= self.cfg['temporal']['d_exit']
             if obj is None and suspicious_hand and pid not in ambiguous:

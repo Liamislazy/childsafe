@@ -233,7 +233,8 @@ class RuntimeDemo(Demo):
                     'mask_reliable': bool(features.get('mask_reliable')),
                     'class': person['obj_class'], 'status': person['obj_status'],
                     'p_unsafe': _nan_to_none(person['p_unsafe']),
-                    'd': _nan_to_none(person['d']), 'near': bool(person['near']),
+                    'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
+                    'near': bool(person['near']),
                     'dwell': person['dwell'], 'notify': bool(person['notify'])})
             objects = []
             for obj in scene.objects:

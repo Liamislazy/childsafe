@@ -226,3 +226,52 @@ def test_hand_crop_fallback_when_yolo_misses_the_held_object():
     assert 2 not in levels and 1 in levels                                            # pen/phone -> CAUTION only
     cfg = load_config(); cfg['rules']['hand_crop_fallback'] = False
     assert 2 not in _levels_without_yolo_object(cfg, unsafe)                          # switch off -> old behaviour
+
+
+# ---- distance is object -> mouth whenever an object is known ----
+
+def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12):
+    class Face(_Face):
+        def detect(self, rgb, t):
+            out = super().detect(rgb, t)
+            x, y = hand_at
+            out.hands = [np.column_stack((np.linspace(x, x + 20, 21), np.linspace(y, y + 15, 21), np.zeros(21)))]
+            return out
+
+    class Det:
+        ok = True
+        def detect(self, rgb):
+            x0, y0, x1, y1 = obj_box
+            mask = None
+            if use_mask:
+                mask = np.zeros(rgb.shape[:2], bool); mask[y0:y1, x0:x1] = True
+            return [Detection((0, 0, 160, 160), 'person', .99), Detection(obj_box, 'fork', conf, mask)]
+
+    cfg = load_config(); cfg['quality']['min_sharpness'] = 0; cfg['smoothing']['method'] = 'none'
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=Face, classifier=_unsafe)
+    try:
+        outs = [pipe.process(np.full((160, 160, 3), 140, np.uint8), i * .1) for i in range(frames)]
+        return outs[-1][2]['persons'][0], outs[-1][2]['feature_rows'][0], [o[2]['level'] for o in outs]
+    finally:
+        pipe.close()
+
+
+def test_object_far_from_mouth_while_hand_is_near_is_not_near():
+    # hand right at the mouth, but the (low-confidence) object it holds points away, 60+ px down-right
+    person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 110, 140, 150), conf=.45)
+    assert row['distance_source'] == 'object'
+    assert person['d'] > 0.5 and not person['near_frame']
+    assert max(levels) == 0
+
+
+def test_long_object_tip_at_mouth_while_hand_is_far_is_near():
+    # hand ~0.7 face widths away, the object it holds reaches the mouth; low confidence -> CAUTION only
+    person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.45)
+    assert row['distance_source'] == 'object' and person['d'] < 0.1
+    assert 1 in levels and 2 not in levels
+
+
+def test_object_without_mask_uses_its_box_and_never_confirms_danger():
+    person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.9, use_mask=False)
+    assert row['distance_source'] == 'object' and person['d'] < 0.1
+    assert not row['proximity_evidence'] and 2 not in levels

@@ -237,7 +237,7 @@ function renderRuntime(res) {
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Vật: ${person.object || 'chưa phát hiện'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
       `Phân loại: ${person.class || 'chưa có'} (${person.status})`,
-      `Khoảng cách: ${person.d == null ? 'chưa đo được' : person.d.toFixed(2)} · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      `Khoảng cách ${person.d_source === 'object' ? 'vật→miệng' : 'tay→miệng (chưa thấy vật)'}: ${person.d == null ? 'chưa đo được' : person.d.toFixed(2)} · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
     for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
     $('liveModels').append(card);

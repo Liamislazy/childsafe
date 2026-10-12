@@ -128,9 +128,15 @@ class AlertProcessor:
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
                         obj.get('obj_conf',math.nan),obj.get('p_unknown_cal',0.))
 
+        # Distance to the mouth: from the held OBJECT whenever one was found (confirmed mask, else
+        # any mask or box of the object linked to the hand); hand -> mouth only when no object is
+        # known. DANGER still requires confirmed evidence (proximity_evidence) below.
         d_raw = f.get(f"d_{self.norm}")
         if modern and f.get('proximity_evidence', False):
             d_raw = f.get('object_d_relative')
+        elif (modern and not _isnan(f.get('candidate_object_d_relative')) and f.get('hand_ok', False)
+              and f.get('object_present', True) is not False):
+            d_raw = f.get('candidate_object_d_relative')   # only while the holding hand and object are observed
         if not visible or (modern and f.get('association_ambiguous')):
             d_raw = math.nan
         if visible and not _isnan(d_raw) and (not modern or f.get('proximity_evidence',False)):
