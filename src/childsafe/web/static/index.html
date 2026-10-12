@@ -221,11 +221,15 @@ function beep(level) {
   oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
 }
 function renderRuntime(res) {
-  const names = ['CHƯA THẤY NGUY CƠ', 'CẢNH GIÁC', 'NGUY HIỂM'];
+  const names = ['BÌNH THƯỜNG', 'CẢNH GIÁC', 'NGUY HIỂM'];
+  const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
   const status = $('runtimeStatus');
   status.replaceChildren();
-  const heading = document.createElement('h3'); heading.textContent = res.level === 0 && !res.green ? 'CHƯA ĐỦ QUAN SÁT' : names[res.level];
-  heading.style.color = res.level === 2 ? '#ef5b4c' : res.level === 1 ? '#f0a92b' : '#98a2b3'; status.append(heading);
+  // Always show the danger level; observation quality is a separate note (it is never "complete"
+  // while the camera is uncalibrated, which used to hide NORMAL behind a grey badge).
+  const heading = document.createElement('h3'); heading.textContent = `Mức: ${names[res.level]}`;
+  heading.style.color = colors[res.level]; status.append(heading);
+  if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
   const summary = document.createElement('p');
   summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
   for (const message of [...res.limitations, res.reason].filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; status.append(p); }
@@ -233,12 +237,13 @@ function renderRuntime(res) {
   for (const person of res.people) {
     const card=document.createElement('div'); card.className='card model';
     const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
-    const level=document.createElement('div'); level.className='level '+(person.level === 0 && !person.green ? 'limited' : person.level_name);
-    level.textContent=person.level === 0 && !person.green ? 'QUAN SÁT HẠN CHẾ' : names[person.level]; card.append(level);
+    const level=document.createElement('div'); level.className='level '+person.level_name;
+    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế'); card.append(level);
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Vật: ${person.object || 'chưa phát hiện'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
       `Phân loại: ${person.class || 'chưa có'} (${person.status})`,
-      `Khoảng cách ${person.d_source === 'object' ? 'vật→miệng' : 'tay→miệng (chưa thấy vật)'}: ${person.d == null ? 'chưa đo được' : person.d.toFixed(2)} · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
+      `Dùng: ${person.d_source === 'object' ? 'vật' : 'tay'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
     for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
     $('liveModels').append(card);
@@ -262,8 +267,7 @@ function draw(res) {
   const P = ([x, y]) => [ox + x * s, oy + y * s];
   const worst = res.level;
   const css = LEVEL_COLOR();
-  const col = worst === 0 && !res.green ? "#6b7280" :
-    css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();
+  const col = css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();   // border = danger level
   ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.strokeRect(2, 2, st.width - 4, st.height - 4);
   for (const person of res.people) {
   if (person.box) { const [a, b] = [P([person.box[0], person.box[1]]), P([person.box[2], person.box[3]])];

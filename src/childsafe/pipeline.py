@@ -136,6 +136,13 @@ class FramePipeline:
                 found += 1
         return found
 
+    def _confident_unsafe(self, result):
+        rc = self.cfg.get('rules', {})
+        return (result.get('p_unsafe_cal', 0) >= rc.get('hand_crop_min_p_unsafe', .8)
+                and result.get('obj_conf', 0) >= self.cfg['calibration']['reject_threshold']
+                and result.get('obj_class') not in ('other', 'unknown', 'empty_hand')
+                and result.get('p_unknown_cal', 0) < .5)
+
     def _hand_crop_fallback(self, state, rgb, f, t):
         """YOLO (COCO classes) often misses the small object held at the mouth, and then nothing
         was classified at all. As in the original Module B design, classify the area around the hand
@@ -164,13 +171,8 @@ class FramePipeline:
             state['classified_hand'] = (t, result)
         if not result:
             return None
-        threshold = self.cfg['calibration']['reject_threshold']
-        confident_unsafe = (result.get('p_unsafe_cal', 0) >= rc.get('hand_crop_min_p_unsafe', .8)
-                            and result.get('obj_conf', 0) >= threshold
-                            and result.get('obj_class') not in ('other', 'unknown', 'empty_hand')
-                            and result.get('p_unknown_cal', 0) < .5)
         f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop', distance_source='hand')
-        if confident_unsafe:
+        if self._confident_unsafe(result):
             f.update(proximity_evidence=True, object_d_relative=f['d_face_width'])
         return result
 
@@ -304,14 +306,32 @@ class FramePipeline:
             f.update(proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{})))
             f['object_present'] = obj is not None
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
-            f['distance_source'] = ('object' if f.get('proximity_evidence') or
-                                    math.isfinite(f.get('candidate_object_d_relative', math.nan)) else 'hand')
+            d_object = (f['object_d_relative'] if f.get('proximity_evidence')
+                        else f.get('candidate_object_d_relative', math.nan))
             hand_distance = f.get('d_face_width',math.nan)
-            suspicious_hand = math.isfinite(hand_distance) and hand_distance <= self.cfg['temporal']['d_exit']
+            d_exit = self.cfg['temporal']['d_exit']
+            suspicious_hand = math.isfinite(hand_distance) and hand_distance <= d_exit
             if obj is None and suspicious_hand and pid not in ambiguous:
                 hand_result = self._hand_crop_fallback(state, rgb, f, t)
                 if hand_result is not None:
                     obj_result = hand_result
+            # Both distances (hand->mouth and object->mouth): each alone misses cases (object hidden
+            # in the hand / object tip far from the fingers), so the closer one counts. A YOLO object
+            # whose classification is confidently unsafe is confirmed evidence when either distance
+            # is near, like the hand-area check; otherwise the confident-mask rule applies as before.
+            if obj is not None and obj_result is not None:
+                state['obj_result'] = (t, obj_result)
+            recent = state.get('obj_result') if obj is not None else None
+            cls = obj_result if obj is not None and obj_result is not None else (
+                recent[1] if recent is not None and 0 <= t-recent[0] <= 1. else None)
+            near_values = [v for v in (d_object, hand_distance) if math.isfinite(v)]
+            d_near = min(near_values) if near_values else math.nan
+            if (not f.get('proximity_evidence') and obj is not None and cls and self._confident_unsafe(cls)
+                    and f.get('mouth_visible') and pid not in ambiguous and math.isfinite(d_near) and d_near <= d_exit):
+                f.update(proximity_evidence=True, object_d_relative=d_near, evidence_source='classifier')
+            f['d_object'], f['d_hand'] = d_object, hand_distance
+            f['distance_source'] = ('object' if math.isfinite(d_object) and
+                                    (not math.isfinite(hand_distance) or d_object <= hand_distance) else 'hand')
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             out = state['processor'].step(f, obj_result)

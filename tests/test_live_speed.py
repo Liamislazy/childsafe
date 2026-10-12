@@ -230,7 +230,10 @@ def test_hand_crop_fallback_when_yolo_misses_the_held_object():
 
 # ---- distance is object -> mouth whenever an object is known ----
 
-def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12):
+_UNSURE = dict(p_unsafe_raw=.7, p_unsafe_cal=.7, obj_conf=.75, obj_class='knife', p_unknown_cal=0., top3=[])
+
+
+def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12, result=None):
     class Face(_Face):
         def detect(self, rgb, t):
             out = super().detect(rgb, t)
@@ -248,7 +251,8 @@ def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12):
             return [Detection((0, 0, 160, 160), 'person', .99), Detection(obj_box, 'fork', conf, mask)]
 
     cfg = load_config(); cfg['quality']['min_sharpness'] = 0; cfg['smoothing']['method'] = 'none'
-    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=Face, classifier=_unsafe)
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=Face,
+                         classifier=lambda *a: dict(result or _UNSURE))
     try:
         outs = [pipe.process(np.full((160, 160, 3), 140, np.uint8), i * .1) for i in range(frames)]
         return outs[-1][2]['persons'][0], outs[-1][2]['feature_rows'][0], [o[2]['level'] for o in outs]
@@ -256,25 +260,28 @@ def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12):
         pipe.close()
 
 
-def test_object_far_from_mouth_while_hand_is_near_is_not_near():
-    # hand right at the mouth, but the (low-confidence) object it holds points away, 60+ px down-right
+def test_both_distances_are_reported_and_the_closer_one_counts():
+    # hand at the mouth, object pointing away: near through the hand
     person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 110, 140, 150), conf=.45)
-    assert row['distance_source'] == 'object'
-    assert person['d'] > 0.5 and not person['near_frame']
-    assert max(levels) == 0
-
-
-def test_long_object_tip_at_mouth_while_hand_is_far_is_near():
-    # hand ~0.7 face widths away, the object it holds reaches the mouth; low confidence -> CAUTION only
+    assert row['d_hand'] < .2 and row['d_object'] > .5 and row['distance_source'] == 'hand'
+    assert person['near_frame'] and 1 in levels and 2 not in levels
+    # hand further away, object tip at the mouth: near through the object
     person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.45)
-    assert row['distance_source'] == 'object' and person['d'] < 0.1
+    assert row['d_object'] < .1 and row['distance_source'] == 'object' and person['d'] < .1
     assert 1 in levels and 2 not in levels
 
 
-def test_object_without_mask_uses_its_box_and_never_confirms_danger():
-    person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.9, use_mask=False)
-    assert row['distance_source'] == 'object' and person['d'] < 0.1
-    assert not row['proximity_evidence'] and 2 not in levels
+def test_weak_outline_alone_never_confirms_danger():
+    for use_mask in (True, False):          # low-confidence mask, or box only
+        person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.45,
+                                               use_mask=use_mask)
+        assert not row['proximity_evidence'] and 2 not in levels
+
+
+def test_confident_unsafe_object_near_mouth_reaches_danger_by_either_distance():
+    for hand_at, box in [((105, 100), (60, 50, 110, 105)), ((55, 55), (100, 110, 140, 150))]:
+        person, row, levels = _run_with_object(hand_at=hand_at, obj_box=box, conf=.45, result=_unsafe())
+        assert row['evidence_source'] == 'classifier' and 2 in levels
 
 
 def test_zoomed_pass_finds_small_object_and_maps_it_back():

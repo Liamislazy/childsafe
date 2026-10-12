@@ -234,6 +234,8 @@ class RuntimeDemo(Demo):
                     'class': person['obj_class'], 'status': person['obj_status'],
                     'p_unsafe': _nan_to_none(person['p_unsafe']),
                     'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
+                    'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
+                    'd_object': _nan_to_none(features.get('d_object', math.nan)),
                     'near': bool(person['near']),
                     'dwell': person['dwell'], 'notify': bool(person['notify'])})
             objects = []

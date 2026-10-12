@@ -136,7 +136,10 @@ class AlertProcessor:
             d_raw = f.get('object_d_relative')
         elif (modern and not _isnan(f.get('candidate_object_d_relative')) and f.get('hand_ok', False)
               and f.get('object_present', True) is not False):
-            d_raw = f.get('candidate_object_d_relative')   # only while the holding hand and object are observed
+            # object found but not confirmed: the closer of object->mouth and hand->mouth counts
+            # (only while the holding hand and object are observed)
+            cand = f.get('candidate_object_d_relative')
+            d_raw = cand if _isnan(d_raw) else min(cand, d_raw)
         if not visible or (modern and f.get('association_ambiguous')):
             d_raw = math.nan
         if visible and not _isnan(d_raw) and (not modern or f.get('proximity_evidence',False)):
