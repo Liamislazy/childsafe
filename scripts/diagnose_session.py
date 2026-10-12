@@ -71,7 +71,10 @@ def main():
         print("   object linked to the hand ", pct(int(assigned.sum()), len(near)))
         print("   object mask confident     ", pct(int(mask.sum()), len(near)),
               f"(>= {cfg['quality']['min_mask_conf']}, needed for DANGER)")
-        print("   confirmed mask at mouth   ", pct(int(prox.sum()), len(near)))
+        src = near.get('evidence_source', pd.Series('', index=near.index)).fillna('')
+        print("   confirmed mask at mouth   ", pct(int((prox & (src != 'hand_crop')).sum()), len(near)))
+        print("   hand-area check: unsafe   ", pct(int((prox & (src == 'hand_crop')).sum()), len(near)),
+              "(fallback when YOLO misses the object)")
         print("   candidate mask near mouth ", pct(int(cand.sum()), len(near)), "(CAUTION only)")
         labels = Counter(l.split(':')[0] for v in near.get('scene_object_labels', pd.Series(dtype=str)).dropna()
                          for l in str(v).split(';') if l)

@@ -119,6 +119,10 @@ rules:                      # D3
   dwell_danger_s: 0.5       # near for at least this long before danger
   dwell_safe_caution_s: 3.0 # safe object near mouth this long -> caution (capped, never danger)
   ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
+  # YOLO misses most small held objects; then classify the area around the hand (original Module B).
+  # Only a confident unsafe result counts as evidence (stricter than the 0.6 mask path). UNTUNED.
+  hand_crop_fallback: true
+  hand_crop_min_p_unsafe: 0.8
 
 runtime:
   max_people: 4

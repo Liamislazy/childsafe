@@ -176,6 +176,7 @@ def _first_danger(cfg, object_at):
                 out.append(Detection((x, 45, x + 15, 60), 'knife', .99, mask))
             return out
     cfg['quality']['min_sharpness'] = 0
+    cfg['rules']['hand_crop_fallback'] = False   # isolate the mask path; the fallback is tested separately
     pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=_Face, classifier=_unsafe)
     rgb = np.full((160, 160, 3), 140, np.uint8)
     try:
@@ -200,3 +201,28 @@ def test_single_missed_detection_pauses_instead_of_restarting_dwell():
 def test_moving_thin_object_keeps_its_history():
     wobble = lambda i: 65 if i % 2 == 0 else 78      # 13 px jumps: IoU < 0.2 between frames
     assert _first_danger(load_config(), wobble) is not None
+
+
+def _levels_without_yolo_object(cfg, result):
+    class PersonOnly:
+        ok = True
+        def detect(self, rgb):
+            return [Detection((0, 0, 160, 160), 'person', .99)]
+    cfg['quality']['min_sharpness'] = 0
+    pipe = FramePipeline(cfg, None, detector=PersonOnly(), landmark_factory=_Face, classifier=lambda *a: dict(result))
+    try:
+        return [pipe.process(np.full((160, 160, 3), 140, np.uint8), i * .1)[2]['level'] for i in range(20)]
+    finally:
+        pipe.close()
+
+
+def test_hand_crop_fallback_when_yolo_misses_the_held_object():
+    unsafe = dict(p_unsafe_raw=.97, p_unsafe_cal=.95, obj_conf=.95, obj_class='knife', p_unknown_cal=0., top3=[])
+    assert 2 in _levels_without_yolo_object(load_config(), unsafe)                    # confident unsafe -> DANGER
+    unsure = dict(unsafe, p_unsafe_cal=.7, obj_conf=.75)
+    assert 2 not in _levels_without_yolo_object(load_config(), unsure)                # below 0.8 -> no DANGER
+    other = dict(unsafe, p_unsafe_cal=.05, obj_conf=.9, obj_class='other', p_unknown_cal=.9)
+    levels = _levels_without_yolo_object(load_config(), other)
+    assert 2 not in levels and 1 in levels                                            # pen/phone -> CAUTION only
+    cfg = load_config(); cfg['rules']['hand_crop_fallback'] = False
+    assert 2 not in _levels_without_yolo_object(cfg, unsafe)                          # switch off -> old behaviour

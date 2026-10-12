@@ -90,6 +90,44 @@ class FramePipeline:
         else:
             lm.close()
 
+    def _hand_crop_fallback(self, state, rgb, f, t):
+        """YOLO (COCO classes) often misses the small object held at the mouth, and then nothing
+        was classified at all. As in the original Module B design, classify the area around the hand
+        instead. A confident unsafe result (>= rules.hand_crop_min_p_unsafe, stricter than the mask
+        path) counts as proximity evidence measured by the hand-to-mouth distance; anything else
+        stays at CAUTION through the normal rules."""
+        rc = self.cfg.get('rules', {})
+        if (not rc.get('hand_crop_fallback', False) or self.classifier is None
+                or not f.get('mouth_visible') or not f.get('detector_ok', True)):
+            return None
+        from childsafe.vision.object_classifier import hand_crop_box
+        h, w = rgb.shape[:2]
+        box = hand_crop_box(f, w, h, self.cfg['cascade']['crop_scale'])
+        if box is None:
+            return None
+        last = state.get('classified_hand')
+        if last is not None and 0 <= t-last[0] < self.cfg.get('cascade', {}).get('classify_interval_s', .1):
+            result = last[1]
+        else:
+            try:
+                result = self.classifier(rgb, box)
+                self.classifier_error = ''
+            except Exception as exc:
+                self.classifier_error = type(exc).__name__
+                return None
+            state['classified_hand'] = (t, result)
+        if not result:
+            return None
+        threshold = self.cfg['calibration']['reject_threshold']
+        confident_unsafe = (result.get('p_unsafe_cal', 0) >= rc.get('hand_crop_min_p_unsafe', .8)
+                            and result.get('obj_conf', 0) >= threshold
+                            and result.get('obj_class') not in ('other', 'unknown', 'empty_hand')
+                            and result.get('p_unknown_cal', 0) < .5)
+        f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop')
+        if confident_unsafe:
+            f.update(proximity_evidence=True, object_d_relative=f['d_face_width'])
+        return result
+
     def reset(self, session_id=None):
         for state in self.states.values():
             self._release_landmarks(state)
@@ -221,8 +259,13 @@ class FramePipeline:
                 state['geometry'].__init__()
             f.update(proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{})))
             f['object_present'] = obj is not None
+            f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
             hand_distance = f.get('d_face_width',math.nan)
             suspicious_hand = math.isfinite(hand_distance) and hand_distance <= self.cfg['temporal']['d_exit']
+            if obj is None and suspicious_hand and pid not in ambiguous:
+                hand_result = self._hand_crop_fallback(state, rgb, f, t)
+                if hand_result is not None:
+                    obj_result = hand_result
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             out = state['processor'].step(f, obj_result)
