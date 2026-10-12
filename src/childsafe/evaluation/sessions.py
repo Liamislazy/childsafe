@@ -17,11 +17,11 @@ def file_hash(path):
     return digest.hexdigest()
 
 
-def code_hash():
-    root=Path(__file__).resolve().parents[1]
+def code_hash(root=None):
+    root=Path(root) if root is not None else Path(__file__).resolve().parents[1]
     digest=hashlib.sha256()
     for path in sorted(root.rglob('*.py')):
-        digest.update(path.relative_to(root).as_posix().encode()+b'\0'+path.read_bytes())
+        digest.update(path.relative_to(root).as_posix().encode()+b'\0'+path.read_bytes().replace(b'\r\n',b'\n'))
     return digest.hexdigest()
 
 
