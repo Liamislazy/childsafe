@@ -235,7 +235,7 @@ function renderRuntime(res) {
     const level=document.createElement('div'); level.className='level '+(person.level === 0 && !person.green ? 'limited' : person.level_name);
     level.textContent=person.level === 0 && !person.green ? 'QUAN SÁT HẠN CHẾ' : names[person.level]; card.append(level);
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
-      `Vật: ${person.object || 'chưa phát hiện'} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
+      `Vật: ${person.object || 'chưa phát hiện'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
       `Phân loại: ${person.class || 'chưa có'} (${person.status})`,
       `Khoảng cách: ${person.d == null ? 'chưa đo được' : person.d.toFixed(2)} · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
@@ -275,7 +275,7 @@ function draw(res) {
   }
   for (const object of res.objects) {
     ctx.strokeStyle='#f0a92b'; ctx.fillStyle='#f0a92b'; ctx.lineWidth=2;
-    const [a,b]=[P(object.box),P([object.box[2],object.box[3]])]; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.fillText(object.label,a[0],a[1]-5);
+    const [a,b]=[P(object.box),P([object.box[2],object.box[3]])]; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.fillText('YOLO: '+object.label,a[0],a[1]-5);
     if (object.mask.length) { ctx.beginPath(); object.mask.forEach((point,i)=>{ const [x,y]=P(point); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.closePath(); ctx.stroke(); }
   }
 }

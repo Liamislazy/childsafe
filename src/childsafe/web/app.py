@@ -226,7 +226,10 @@ class RuntimeDemo(Demo):
                     'mouth_visible': bool(features.get('mouth_visible')),
                     'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
                     'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
-                    'object': features.get('object_label', ''),
+                    # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
+                    # pen, so a pen comes back as 'toothbrush').
+                    'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
+                    'yolo_label': features.get('object_label', ''),
                     'mask_reliable': bool(features.get('mask_reliable')),
                     'class': person['obj_class'], 'status': person['obj_status'],
                     'p_unsafe': _nan_to_none(person['p_unsafe']),
