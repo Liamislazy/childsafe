@@ -1,9 +1,11 @@
 """Local segmentation, temporary IDs and per-person landmark/alert histories."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import math
 import time
+
+import numpy as np
 
 from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
@@ -90,6 +92,49 @@ class FramePipeline:
             self._landmark_pool.append(lm)
         else:
             lm.close()
+
+    def _zoom_detect(self, rgb, scene, active, ambiguous):
+        """Second detector pass on a crop around each person's hands and mouth. The full frame is
+        resized to imgsz (640), so a small or distant held object is only a few pixels wide; in the
+        crop it is several times larger. Objects found there are mapped back to full-frame
+        coordinates (mask included) and merged with the full-frame detections (higher score wins
+        when they overlap). Only for the real detector (fakes in tests do not declare support)."""
+        dc = self.cfg.get('detector', {})
+        if not dc.get('roi_zoom', False) or not getattr(self.detector, 'supports_roi', False):
+            return 0
+        h, w = rgb.shape[:2]
+        found = 0
+        for track in active:
+            lm = scene.people.get(track.person_id)
+            if track.person_id in ambiguous or lm is None or not lm.hands:
+                continue
+            pts = [hd[:, :2] for hd in lm.hands]
+            if lm.face is not None:
+                pts.append(lm.face[[13, 14, 78, 308], :2])
+            pts = np.concatenate(pts)
+            (x0, y0), (x1, y1) = pts.min(0), pts.max(0)
+            side = max(x1 - x0, y1 - y0) * dc.get('roi_scale', 1.8)
+            side = min(max(side, dc.get('roi_min_px', 192)), min(h, w))
+            if side * side > dc.get('roi_max_frame_frac', .5) * h * w:
+                continue   # crop would be most of the frame: nothing to gain
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
+            bx1, by1 = int(bx0 + side), int(by0 + side)
+            for d in self.detector.detect(np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
+                if d.label == 'person':
+                    continue
+                box = (d.box[0] + bx0, d.box[1] + by0, d.box[2] + bx0, d.box[3] + by0)
+                mask = None
+                if d.mask is not None:
+                    mask = np.zeros((h, w), bool)
+                    mask[by0:by0 + d.mask.shape[0], bx0:bx0 + d.mask.shape[1]] = d.mask
+                obj = replace(d, box=box, mask=mask)
+                same = [k for k, o in enumerate(scene.objects) if iou(o.box, box) > .5]
+                if same and all(scene.objects[k].confidence >= obj.confidence for k in same):
+                    continue
+                scene.objects = [o for k, o in enumerate(scene.objects) if k not in same] + [obj]
+                found += 1
+        return found
 
     def _hand_crop_fallback(self, state, rgb, f, t):
         """YOLO (COCO classes) often misses the small object held at the mouth, and then nothing
@@ -185,6 +230,7 @@ class FramePipeline:
         ambiguous |= resolve_hands(scene.people, scene.boxes)
         assigned = {p.person_id: [] for p in active}
         scene.objects = [d for d in detections if d.label != 'person']
+        roi_found = self._zoom_detect(rgb, scene, active, ambiguous) if valid and source_ok else 0
         for obj in scene.objects:
             owner, unclear = associate_object(obj, active, scene.people,
                                              self.cfg.get('quality', {}).get('max_hand_object_px', 80))
@@ -210,7 +256,7 @@ class FramePipeline:
                      person_x0=float(track.box[0]), person_y0=float(track.box[1]),
                      person_x1=float(track.box[2]), person_y1=float(track.box[3]),
                      yolo_people=sum(d.label == 'person' for d in detections), tracked=True,
-                     scene_objects=len(scene.objects),
+                     scene_objects=len(scene.objects), roi_objects=roi_found,
                      scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
                      assigned_objects=len(assigned[pid]))
             obj_result = None

@@ -275,3 +275,43 @@ def test_object_without_mask_uses_its_box_and_never_confirms_danger():
     person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.9, use_mask=False)
     assert row['distance_source'] == 'object' and person['d'] < 0.1
     assert not row['proximity_evidence'] and 2 not in levels
+
+
+def test_zoomed_pass_finds_small_object_and_maps_it_back():
+    class SmallFace(_Face):                     # person far away in a 640x480 frame
+        def detect(self, rgb, t):
+            out = super().detect(rgb, t)
+            out.face[:, :2] = out.face[:, :2] * .5 + [400, 300]
+            out.hands = [hd * [.5, .5, 1] + [400, 300, 0] for hd in out.hands]
+            out.width, out.height = rgb.shape[1], rgb.shape[0]
+            return out
+
+    seen = []
+
+    class Det:
+        ok, supports_roi = True, True
+        def detect(self, rgb):
+            seen.append(rgb.shape[:2])
+            if rgb.shape[:2] == (480, 640):     # full frame: the small fork is missed
+                return [Detection((380, 260, 470, 380), 'person', .95)]
+            mask = np.zeros(rgb.shape[:2], bool); mask[60:90, 70:80] = True   # in crop coordinates
+            return [Detection((70, 60, 80, 90), 'fork', .8, mask)]
+
+    cfg = load_config(); cfg['quality']['min_sharpness'] = 0; cfg['quality']['min_face_px'] = 10
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=SmallFace, classifier=_unsafe)
+    try:
+        scene, row, out = pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)
+        assert len(seen) == 2 and seen[1][0] == seen[1][1] and seen[1][0] < 480     # second, square crop
+        fork = [o for o in scene.objects if o.label == 'fork'][0]
+        assert fork.mask.shape == (480, 640) and fork.mask.sum() == 300
+        ys, xs = np.nonzero(fork.mask)
+        assert (xs.min(), ys.min()) == (fork.box[0], fork.box[1])               # mask and box agree
+        assert row['roi_objects'] == 1 and row['object_present']
+    finally:
+        pipe.close()
+    cfg['detector']['roi_zoom'] = False
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=SmallFace, classifier=_unsafe)
+    try:
+        assert not [o for o in pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)[0].objects]
+    finally:
+        pipe.close()

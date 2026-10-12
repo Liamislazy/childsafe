@@ -143,6 +143,12 @@ detector:
   object_min_conf: 0.35
   device: auto              # GPU when available (yolo11n-seg ~13 ms on RTX 3050 vs ~72 ms on CPU)
   imgsz: 640
+  # Second pass on a square crop around each person's hands + mouth (objects held far from the
+  # camera are only a few pixels in the full 640 px frame). ~1 extra detector call per person.
+  roi_zoom: true
+  roi_scale: 1.8            # crop side = hands+mouth extent x this
+  roi_min_px: 192
+  roi_max_frame_frac: 0.5   # skip when the crop would cover most of the frame
   complete_object_coverage: false # COCO excludes coins/pens; never infer their location
 
 quality:

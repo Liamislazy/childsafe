@@ -25,6 +25,7 @@ def _pick_device(device):
 
 
 class SegmentationDetector:
+    supports_roi = True   # FramePipeline may run a second, zoomed pass on hands/mouth crops
     def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640):
         """confidence: minimum score for people. object_confidence: minimum score for every other
         class (thin/small objects such as forks or knives often score below the person threshold;

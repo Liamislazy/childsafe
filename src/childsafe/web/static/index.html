@@ -162,7 +162,8 @@ const work = document.createElement("canvas");
 async function start() {
   if (running) { stop(); return; }
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false });
+    // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   } catch (e) { $("liveErr").textContent = "Camera not available: " + e.message; return; }
   $("liveErr").textContent = "";
   $("video").srcObject = stream; await $("video").play();
