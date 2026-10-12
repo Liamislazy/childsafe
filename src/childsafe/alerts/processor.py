@@ -70,6 +70,7 @@ class AlertProcessor:
         self.danger_block_until = -math.inf
         self.last_evidence_t = None
         self.last_level = NORMAL
+        self.last_alert_t = None
         self.event_active = False
         self.event_reliable = False
         self.last_step_t = None
@@ -240,6 +241,29 @@ class AlertProcessor:
             level,reason = CAUTION,'possible held object near mouth; localization uncertain'
         if lost_near and level < CAUTION:
             level, reason = CAUTION, "mouth hidden by hand"
+        # ---- stable CAUTION -------------------------------------------------------------
+        # An object at the mouth covers it, so the mouth landmarks and the object mask flicker and
+        # CAUTION used to drop to NORMAL on every missing frame. Once raised from real evidence,
+        # CAUTION is kept for rules.caution_hold_s through missing evidence, and kept as long as the
+        # hand stays where the mouth was while the mouth is covered. Only an observed departure
+        # (mouth visible, object/hand beyond d_exit), the person leaving or the source dropping ends it.
+        hold_s = rc.get('caution_hold_s', 0.)
+        if level >= CAUTION:
+            self.last_alert_t = t
+        departed = visible and d is not None and d > tc['d_exit']
+        stop = departed or not f.get('source_ok', True) or f.get('person_left', False)
+        if stop:
+            self.last_alert_t = None
+        elif level < CAUTION and self.last_alert_t is not None and hold_s > 0:
+            covered = (not visible and f.get('hand_ok') and
+                       ((not _isnan(f.get('d_last_mouth')) and f['d_last_mouth'] <= tc['d_exit']) or
+                        (f.get('face_ok') and not _isnan(f.get(f'd_{self.norm}'))
+                         and f[f'd_{self.norm}'] <= tc['d_exit'])))
+            if covered:
+                level, reason = CAUTION, 'mouth covered by hand/object'
+                self.last_alert_t = t
+            elif t - self.last_alert_t <= hold_s:
+                level, reason = CAUTION, 'caution held: object was just at the mouth'
         # Preserve recent risk, but do not accumulate dwell from held coordinates.
         missing_evidence = not visible or (modern and not f.get('proximity_evidence',False))
         held = (self.c.lost_landmark and missing_evidence and self.last_evidence_t is not None

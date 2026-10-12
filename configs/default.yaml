@@ -128,6 +128,7 @@ rules:                      # D3
   # YOLO misses most small held objects; then classify the area around the hand (original Module B).
   # Only a confident unsafe result counts as evidence (stricter than the 0.6 mask path). UNTUNED.
   hand_crop_fallback: true
+  caution_hold_s: 1.5       # keep CAUTION through flickering evidence unless a departure is observed. UNTUNED
   hand_crop_min_p_unsafe: 0.8
 
 runtime:
