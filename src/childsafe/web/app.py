@@ -28,6 +28,7 @@ from childsafe.vision.object_classifier import ObjectClassifier, hand_crop_box
 from childsafe.vision.elevated import ElevatedQuality
 from childsafe.pipeline import FramePipeline
 from childsafe.vision.tracking import iou
+from childsafe.runtime.browser import BrowserLease, FrameRejected
 
 STATIC = Path(__file__).parent / "static"
 
@@ -184,7 +185,7 @@ class RuntimeDemo(Demo):
     def close(self):
         self.pipeline.close()
 
-    def frame(self, body, kind, severity, mode):
+    def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.):
         rgb = _decode(body)
         if kind in KINDS and severity > 0:
             rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
@@ -195,7 +196,8 @@ class RuntimeDemo(Demo):
             prev = getattr(self, 'prev_frame_t', None)
             frame_gap = t-prev if prev is not None else 0.
             self.prev_frame_t = t
-            scene, _, out = self.pipeline.process(rgb, t)
+            scene, _, out = self.pipeline.process(rgb, t, frame_age_s=frame_age_s,
+                                                 processing_deadline=deadline)
             if not self.recording_full:
                 if len(self.rows)+len(out['feature_rows']) <= 100000:
                     self.rows.extend(dict(row) for row in out['feature_rows'])
@@ -265,6 +267,42 @@ class RuntimeDemo(Demo):
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
     processing = asyncio.Lock()
+    lease = BrowserLease(demo.cfg.get('runtime',{}).get('stale_frame_s',.25), clock=lambda:time.perf_counter())
+
+    @app.post('/api/camera/start')
+    async def camera_start(client_t: float):
+        if processing.locked():
+            return JSONResponse({'error':'camera busy'},status_code=503)
+        try:
+            result = lease.start(client_t)
+            await run_in_threadpool(demo.reset)
+            return result
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/sync')
+    async def camera_sync(token: str, client_t: float):
+        try:
+            return lease.sync(token,client_t)
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/end')
+    async def camera_end(token: str):
+        try:
+            lease.end(token)
+            return {'ok':True}
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/renew')
+    async def camera_renew(token: str, client_t: float):
+        if processing.locked():
+            return JSONResponse({'error':'camera busy'},status_code=503)
+        try:
+            return lease.renew(token,client_t)
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
 
     @app.get("/")
     def index():
@@ -274,21 +312,47 @@ def create_app(demo: Demo) -> FastAPI:
     def info():
         return {"models": {n: Path(p).parent.name for n, p in demo.paths.items()}, "corruptions": KINDS,
                 'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
+                'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")
-    async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand"):
-        body = await request.body()
+    async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand",
+                    token: str = '', sequence: int = -1, capture_t: float = float('nan')):
         # Inference must not block the event loop (/info/reset can remain responsive).
         # Reject overlap rather than queuing old images behind the current frame.
         if processing.locked():
             return JSONResponse({'error': 'frame processing busy; retry with a fresh frame'},
                                 status_code=503, headers={'Retry-After': '1'})
         async with processing:
-            return JSONResponse(await run_in_threadpool(demo.frame, body, kind, severity, mode))
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 8*1024*1024:
+                    return JSONResponse({'error':'frame exceeds 8 MB limit'},status_code=413)
+            body = bytes(body)
+            if not isinstance(demo,RuntimeDemo):
+                return JSONResponse(await run_in_threadpool(demo.frame, body, kind, severity, mode))
+            try:
+                deadline, age = lease.frame(token,sequence,capture_t)
+                result = await run_in_threadpool(demo.frame, body, kind, severity, mode,
+                                                deadline=deadline,frame_age_s=age)
+                lease.check(token)  # Stop/expiry while inference ran discards the reply.
+                result['clock_uncertainty_s'] = lease.uncertainty
+                result['age_scope'] = 'browser snapshot to server; not camera sensor latency'
+                return JSONResponse(result)
+            except FrameRejected as exc:
+                return JSONResponse({'error':str(exc)},status_code=409)
 
     @app.post("/api/reset")
-    def reset():
+    async def reset(token: str = ''):
+        if processing.locked():
+            return JSONResponse({'error':'camera busy; retry reset'},status_code=503)
+        if isinstance(demo,RuntimeDemo):
+            try:
+                lease.check(token)
+                lease.reset_floor = lease.clock()
+            except FrameRejected as exc:
+                return JSONResponse({'error':str(exc)},status_code=409)
         with demo.lock:
             demo.reset()
         return {"ok": True}

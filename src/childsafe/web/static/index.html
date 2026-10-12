@@ -100,6 +100,31 @@
 const $ = id => document.getElementById(id);
 let info = null, running = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
+let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
+async function cameraClock(renew=false) {
+  const sent = performance.now()/1000;
+  const q = new URLSearchParams({client_t:sent});
+  if (renew) q.set('token',cameraToken);
+  const response = await fetch('/api/camera/'+(renew?'renew':'start')+'?'+q,{method:'POST'});
+  const received = performance.now()/1000;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  cameraToken = data.token;
+  const sync = await fetch('/api/camera/sync?'+new URLSearchParams({token:cameraToken,client_t:received}),{method:'POST'});
+  if (!sync.ok) throw new Error((await sync.json()).error);
+  lastSync = performance.now();
+}
+async function nextFrame(v) {
+  if (v.requestVideoFrameCallback) {
+    const metadata = await new Promise(resolve => v.requestVideoFrameCallback((_,m)=>resolve(m)));
+    if (metadata.presentedFrames <= lastMediaFrame) return false;
+    lastMediaFrame = metadata.presentedFrames;
+  } else {
+    if (v.currentTime <= lastMediaFrame) return false;
+    lastMediaFrame = v.currentTime;
+  }
+  return true;
+}
 const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
 
 async function loadInfo() {
@@ -119,7 +144,8 @@ async function start() {
   } catch (e) { $("liveErr").textContent = "Camera not available: " + e.message; return; }
   $("liveErr").textContent = "";
   $("video").srcObject = stream; await $("video").play();
-  await fetch("/api/reset", { method: "POST" });
+  try { await cameraClock(); } catch(e) { stop(); $("liveErr").textContent=e.message; return; }
+  sequence = 0; lastMediaFrame = -1;
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume();
   running = true; runToken++; lastReply = performance.now(); lastLevel = 0;
@@ -127,6 +153,8 @@ async function start() {
   $("startBtn").textContent = "Stop camera"; loop(runToken);
 }
 function stop() {
+  if (cameraToken) fetch('/api/camera/end?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  cameraToken = '';
   running = false; runToken++; $("startBtn").textContent = "Start camera";
   if (stream) stream.getTracks().forEach(t => t.stop());
   const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "camera off";
@@ -136,18 +164,26 @@ function stop() {
 async function loop(token) {
   if (!running || token !== runToken) return;
   const v = $("video");
+  try {
+    if (performance.now()-lastSync > 15000) await cameraClock(true);
+    if (!await nextFrame(v)) { requestAnimationFrame(()=>loop(token)); return; }
+  } catch(e) { stop(); $("liveErr").textContent=e.message; return; }
+  if (!running || token !== runToken) return;
+  const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
   work.width = v.videoWidth; work.height = v.videoHeight;
   const wctx = work.getContext("2d");
   wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
   wctx.drawImage(v, 0, 0);
   const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
-  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value });
+  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value,
+                                 token:cameraToken,sequence:++sequence,capture_t:captureT });
   try {
     const t0 = performance.now();
     const response = await fetch("/api/frame?" + q, { method: "POST", body: blob, signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('HTTP '+response.status);
     const res = await response.json();
     if (!running || token !== runToken) return;
+    if (performance.now()/1000-captureT > info.stale_frame_s) throw new Error('Kết quả ảnh đã cũ; đang lấy ảnh mới');
     $("liveErr").textContent = "";
     lastReply = performance.now();
     draw(res);
@@ -245,7 +281,10 @@ $("testSound").onclick = async () => {
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume(); beep(1);
 };
-$("resetBtn").onclick = () => fetch("/api/reset", { method: "POST" });
+$("resetBtn").onclick = async () => {
+  const response = await fetch('/api/reset?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  if (!response.ok) $("liveErr").textContent=(await response.json()).error;
+};
 $("sev").oninput = () => $("sevVal").textContent = $("sev").value;
 loadInfo();
 </script>

@@ -214,7 +214,8 @@ class FramePipeline:
         self.tracker.reset()
         self.session_id = self.session_id + 1 if session_id is None else session_id
 
-    def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True):
+    def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True,
+                processing_deadline=None):
         start = time.perf_counter()
         h, w = rgb.shape[:2]
         valid = frame_valid and frame_age_s <= self.cfg.get('runtime', {}).get('stale_frame_s', .25)
@@ -392,6 +393,11 @@ class FramePipeline:
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             f['classifier_ok'] = self.classifier is not None and not state['classifier_error']
+            if processing_deadline is not None and time.perf_counter() > processing_deadline:
+                f.update(frame_valid=False, mouth_visible=False, proximity_evidence=False)
+                f['quality_reasons'].append('frame expired during inference')
+                obj_result = None
+                self._clear_classification(state)
             out = state['processor'].step(f, obj_result)
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
@@ -431,6 +437,20 @@ class FramePipeline:
                                           if state['classifier_error']), '')
         for f in rows:
             f['inference_s'] = inference_s
+        # A later person's work may expire the whole shared source sample.
+        if processing_deadline is not None and time.perf_counter() > processing_deadline:
+            outputs = []
+            for f in rows:
+                f.update(frame_valid=False,mouth_visible=False,proximity_evidence=False,history_reset=True)
+                f.setdefault('quality_reasons',[]).append('frame expired during inference')
+                state = self.states.get(f['person_id'])
+                if state is not None:
+                    self._clear_classification(state)
+                    state['processor'].reset()
+                    result = state['processor'].step(f)
+                    result.update(person_id=f['person_id'],session_id=self.session_id,
+                                  visible=False,box=state.get('box'))
+                    outputs.append(result)
         level = max((o['level'] for o in outputs), default=0)
         quality = 'unobservable' if not outputs else (
             'unobservable' if any(o['observation'] == 'unobservable' for o in outputs) else
