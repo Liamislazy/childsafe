@@ -71,3 +71,13 @@ def test_one_person_is_shown_once_in_the_web_runtime():
             assert len(_displayed_people(out['persons'])) <= 1
     finally:
         pipe.close()
+
+
+def test_displayed_person_number_is_reused_not_ever_increasing():
+    from childsafe.web.app import RuntimeDemo
+    demo = RuntimeDemo.__new__(RuntimeDemo)
+    shown = [demo._slot([pid])[pid] for pid in range(10, 60)]   # internal IDs keep climbing
+    assert set(shown) == {1}
+    slots = demo._slot([60, 61])                              # a second person gets 2
+    assert sorted(slots.values()) == [1, 2]
+    assert demo._slot([61, 62]) == {61: 2, 62: 1}               # freed number 1 is reused

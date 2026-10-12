@@ -168,6 +168,22 @@ class RuntimeDemo(Demo):
         self.rows = []
         self.recording_full = False
         self.prev_frame_t = None
+        self.slots = {}
+
+    def _slot(self, shown_ids):
+        """Short display number per person (1, 2, ...). Internal track IDs never repeat (alert
+        history must not pass between people), so they keep climbing; the page shows a slot that is
+        freed when the person is no longer shown and reused for the next one."""
+        slots = getattr(self, 'slots', None)
+        if slots is None:
+            slots = self.slots = {}
+        for pid in [k for k in slots if k not in shown_ids]:
+            del slots[pid]
+        for pid in shown_ids:
+            if pid not in slots:
+                used = set(slots.values())
+                slots[pid] = next(n for n in range(1, len(used) + 2) if n not in used)
+        return slots
 
     def session_csv(self):
         import pandas as pd
@@ -195,12 +211,14 @@ class RuntimeDemo(Demo):
                 else:
                     self.recording_full = True
             people = []
-            for person in _displayed_people(out['persons']):
+            shown = _displayed_people(out['persons'])
+            slots = self._slot([p['person_id'] for p in shown])
+            for person in shown:
                 pid = person['person_id']
                 lm = scene.people.get(pid)
                 features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
                 people.append({
-                    'id': pid, 'box': scene.boxes.get(pid),
+                    'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
                     'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
                     'observation': person['observation'], 'green': person['green'],
                     'reason': person['reason'], 'reasons': person['observation_reasons'],
