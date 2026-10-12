@@ -169,13 +169,17 @@ def resolve_hands(people, boxes, ratio=1.5, max_own=1.0):
     return ambiguous
 
 
-def to_original(lm, box, width, height):
-    """Crop is taken without resizing; translation preserves x/y and z pixel scale."""
+def to_original(lm, box, width, height, scale=1.):
+    """Map landmarks from a crop (optionally enlarged by `scale`) back to the original frame.
+    x/y and z are divided by the scale, then x/y are shifted by the crop offset. `lm.scale` keeps
+    the enlargement so size checks can use the resolution the landmarks were found at."""
     shift = np.array([box[0], box[1], 0], dtype=np.float32)
+    inv = np.float32(1. / scale)
     if lm.face is not None:
-        lm.face = lm.face + shift
-    lm.hands = [h + shift for h in lm.hands]
+        lm.face = lm.face * inv + shift
+    lm.hands = [h * inv + shift for h in lm.hands]
     lm.width, lm.height = width, height
+    lm.scale = float(scale)
     return lm
 
 

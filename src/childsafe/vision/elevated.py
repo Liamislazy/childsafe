@@ -77,7 +77,9 @@ class ElevatedQuality:
         visible = lm is not None and lm.face is not None
         yaw = pitch = math.nan
         if visible:
-            if features.get('face_width',0) < qc.get('min_face_px',40):
+            # Sizes are judged at the resolution the landmarks were found at (zoomed crop for far people).
+            zoom = float(getattr(lm, 'scale', 1.) or 1.)
+            if features.get('face_width',0) * zoom < qc.get('min_face_px',40):
                 reasons.append('face too small')
                 visible = False
             matrix = getattr(lm,'face_matrix',None)
@@ -94,7 +96,7 @@ class ElevatedQuality:
                     reasons.append('mouth hidden by head orientation')
                     visible = False
             mouth = lm.face[MOUTH_POLYGON,:2]
-            if np.ptp(mouth[:,0]) < qc.get('min_mouth_px',4):
+            if np.ptp(mouth[:,0]) * zoom < qc.get('min_mouth_px',4):
                 reasons.append('mouth too small')
                 visible = False
             current = mouth.mean(0)
@@ -106,7 +108,7 @@ class ElevatedQuality:
             self.prev_mouth,self.prev_t = current,lm.t
             if lm.hands:
                 hand_extent = max(float(np.ptp(hand[:,:2],axis=0).max()) for hand in lm.hands)
-                if hand_extent < qc.get('min_hand_px',10):
+                if hand_extent * zoom < qc.get('min_hand_px',10):
                     reasons.append('hand too small')
             else:
                 reasons.append('no observable hand')

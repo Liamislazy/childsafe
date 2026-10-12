@@ -5,6 +5,7 @@ from dataclasses import dataclass, field, replace
 import math
 import time
 
+import cv2
 import numpy as np
 
 from childsafe.alerts.processor import AlertProcessor
@@ -208,12 +209,27 @@ class FramePipeline:
                     # Tight body crops can prevent palm detection for a gripping hand.
                     # For a lone person retain the original camera framing, then check
                     # ownership. Multiple people retain separate body crops.
-                    if len(active) == 1 and not track.ambiguous:
+                    # A person far from the camera (small box) is cropped with a margin and
+                    # enlarged before MediaPipe: its face/palm detectors shrink the input to
+                    # ~128-256 px, so a 30 px face in the full frame is nearly invisible to them.
+                    lc = self.cfg.get('landmarks', {})
+                    bw, bh = box[2]-box[0], box[3]-box[1]
+                    far = lc.get('zoom', True) and bh < lc.get('zoom_below_frac', .6) * h
+                    if len(active) == 1 and not track.ambiguous and not far:
                         crop = (0, 0, w, h)
+                    elif far:
+                        mx, my = int(bw * .15), int(bh * .1)   # margin: hands reaching out of the box
+                        crop = (max(0, box[0]-mx), max(0, box[1]-my), min(w, box[2]+mx), min(h, box[3]+my))
                     else:
                         crop = box
-                    lm = state['landmarks'].detect(rgb[crop[1]:crop[3],crop[0]:crop[2]], t)
-                    lm = to_original(lm, crop, w, h)
+                    image = rgb[crop[1]:crop[3],crop[0]:crop[2]]
+                    scale = 1.
+                    longest = max(image.shape[:2])
+                    if far and 0 < longest < lc.get('zoom_target_px', 640):
+                        scale = min(lc.get('zoom_target_px', 640) / longest, lc.get('zoom_max_scale', 3.))
+                        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
+                    lm = state['landmarks'].detect(np.ascontiguousarray(image), t)
+                    lm = to_original(lm, crop, w, h, scale)
                     inside = lambda points: (box[0] <= points[:,0].mean() <= box[2] and
                                              box[1] <= points[:,1].mean() <= box[3])
                     if lm.face is not None and not inside(lm.face):

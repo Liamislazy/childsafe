@@ -305,6 +305,7 @@ def test_zoomed_pass_finds_small_object_and_maps_it_back():
             return [Detection((70, 60, 80, 90), 'fork', .8, mask)]
 
     cfg = load_config(); cfg['quality']['min_sharpness'] = 0; cfg['quality']['min_face_px'] = 10
+    cfg['landmarks']['zoom'] = False      # this test is about the object pass (landmark zoom tested separately)
     pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=SmallFace, classifier=_unsafe)
     try:
         scene, row, out = pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)
@@ -320,5 +321,52 @@ def test_zoomed_pass_finds_small_object_and_maps_it_back():
     pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=SmallFace, classifier=_unsafe)
     try:
         assert not [o for o in pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)[0].objects]
+    finally:
+        pipe.close()
+
+
+
+def test_far_person_is_zoomed_for_landmarks_and_mapped_back():
+    """A far person: MediaPipe only finds the face when the crop is enlarged (as for a ~30 px face)."""
+    BOX = (300, 200, 380, 330)                  # 80x130 px person in a 640x480 frame
+    inputs = []
+
+    class ZoomOnly:
+        def detect(self, rgb, t):
+            h, w = rgb.shape[:2]
+            inputs.append((w, h))
+            face = None
+            hands = []
+            if max(w, h) >= 400 and (w, h) != (640, 480):   # only visible after enlargement (full frame: missed)
+                s = w / 104                         # crop is the 80x130 box + margins = 104 x 156 px
+                cx, cy = (340 - 288) * s, (240 - 187) * s     # face centre in crop pixels
+                face = np.zeros((478, 3)); face[:, :2] = [cx, cy]
+                face[234, :2] = [cx - 14 * s, cy]; face[454, :2] = [cx + 14 * s, cy]
+                face[[78, 13, 308, 14], :2] = [[cx - 4 * s, cy + 8 * s], [cx, cy + 6 * s], [cx + 4 * s, cy + 8 * s], [cx, cy + 10 * s]]
+                face[[33, 133], :2] = [cx - 6 * s, cy - 4 * s]; face[[362, 263], :2] = [cx + 6 * s, cy - 4 * s]
+            return SimpleNamespace(t=t, width=w, height=h, face=face, hands=hands, handedness=[], face_matrix=np.eye(4))
+        def close(self): pass
+
+    class Det:
+        ok = True
+        def detect(self, rgb):
+            return [Detection(BOX, 'person', .9)]
+
+    cfg = load_config(); cfg['quality']['min_sharpness'] = 0
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=ZoomOnly, classifier=lambda *a: None)
+    try:
+        scene, row, out = pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)
+        assert max(inputs[-1]) >= 400                                  # MediaPipe got an enlarged crop
+        lm = scene.people[out['persons'][0]['person_id']]
+        assert lm.face is not None and abs(lm.face[:, 0].mean() - 340) < 2 and abs(lm.face[:, 1].mean() - 240) < 3
+        assert abs(row['face_width'] - 28) < 1.5                        # 28 px in the original frame
+        assert row['mouth_visible']                                     # not rejected as "face too small"
+    finally:
+        pipe.close()
+    cfg['landmarks']['zoom'] = False
+    pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=ZoomOnly, classifier=lambda *a: None)
+    try:
+        scene, row, out = pipe.process(np.full((480, 640, 3), 140, np.uint8), 0.)
+        assert not row['mouth_visible']                                 # old behaviour: face missed
     finally:
         pipe.close()
