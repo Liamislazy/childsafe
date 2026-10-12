@@ -21,6 +21,7 @@ from childsafe.alerts.processor import LEVEL_NAMES, Components
 from childsafe.config import FULL_DATASET_CHECKPOINT, load_config
 from childsafe.pipeline import FramePipeline
 from childsafe.runtime.source import VideoSource
+from childsafe.runtime import configure_runtime
 
 COLORS = {0: (60, 180, 60), 1: (0, 190, 255), 2: (0, 0, 255)}   # BGR
 
@@ -72,6 +73,7 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True
     rc = cfg["runtime"]

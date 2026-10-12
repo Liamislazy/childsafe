@@ -132,6 +132,7 @@ rules:                      # D3
   hand_crop_min_p_unsafe: 0.8
 
 runtime:
+  cpu_threads: 0            # keep library defaults; optional measured CPU budget (training unaffected)
   max_people: 4
   primary_person_only: false # opt-in (--single-person): follow only the largest person; not for doll/child-next-to-adult tests
   identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
@@ -153,6 +154,7 @@ detector:
   # Second pass on a square crop around each person's hands + mouth (objects held far from the
   # camera are only a few pixels in the full 640 px frame). ~1 extra detector call per person.
   roi_zoom: true
+  roi_skip_resolved: true   # skip the extra pass when a confident held mask is already near the mouth
   roi_scale: 1.8            # crop side = hands+mouth extent x this
   roi_min_px: 192
   roi_max_frame_frac: 0.5   # skip when the crop would cover most of the frame

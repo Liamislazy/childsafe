@@ -148,6 +148,7 @@ async function loop(token) {
     if (!response.ok) throw new Error('HTTP '+response.status);
     const res = await response.json();
     if (!running || token !== runToken) return;
+    $("liveErr").textContent = "";
     lastReply = performance.now();
     draw(res);
     renderRuntime(res);

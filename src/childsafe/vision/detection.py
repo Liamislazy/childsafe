@@ -26,7 +26,7 @@ def _pick_device(device):
 
 class SegmentationDetector:
     supports_roi = True   # FramePipeline may run a second, zoomed pass on hands/mouth crops
-    def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640):
+    def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640, cpu_threads=None):
         """confidence: minimum score for people. object_confidence: minimum score for every other
         class (thin/small objects such as forks or knives often score below the person threshold;
         low-score objects only ever reach the CAUTION 'candidate' path, see quality.min_*_mask_conf)."""
@@ -37,6 +37,7 @@ class SegmentationDetector:
         self.object_confidence = confidence if object_confidence is None else object_confidence
         self.device = 'cpu'
         self.imgsz = imgsz
+        self.cpu_threads = cpu_threads
         try:
             p = Path(path)
             if not p.is_file():
@@ -54,11 +55,14 @@ class SegmentationDetector:
         person_conf = self.confidence
         object_conf = getattr(self, 'object_confidence', person_conf)
         try:
+            self._apply_thread_budget()
             # Ultralytics numpy inputs are BGR. retina_masks preserves original resolution.
             result = self.model.predict(rgb[:, :, ::-1].copy(), conf=min(person_conf, object_conf),
                                         retina_masks=True, verbose=False,
                                         device=getattr(self, 'device', 'cpu'),
                                         imgsz=getattr(self, 'imgsz', 640))[0]
+            # Lazy Ultralytics backend initialization overwrites torch CPU threads.
+            self._apply_thread_budget()
             detections = []
             for i, box in enumerate(result.boxes):
                 label = result.names[int(box.cls.item())]
@@ -77,6 +81,13 @@ class SegmentationDetector:
         except Exception as exc:
             self.error = type(exc).__name__
             return []
+
+    def _apply_thread_budget(self):
+        threads = getattr(self, 'cpu_threads', None)
+        if threads and self.device == 'cpu':
+            import torch
+            if torch.get_num_threads() != threads:
+                torch.set_num_threads(threads)
 
     @property
     def ok(self):

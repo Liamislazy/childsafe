@@ -7,6 +7,7 @@ written to disk. Run with scripts/web_demo.py.
 from __future__ import annotations
 
 import base64
+import asyncio
 import io
 import math
 import threading
@@ -17,6 +18,7 @@ import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image
+from starlette.concurrency import run_in_threadpool
 
 from childsafe.alerts.processor import LEVEL_NAMES, AlertProcessor
 from childsafe.data.corruptions import KINDS, corrupt
@@ -262,6 +264,7 @@ class RuntimeDemo(Demo):
 
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
+    processing = asyncio.Lock()
 
     @app.get("/")
     def index():
@@ -275,7 +278,14 @@ def create_app(demo: Demo) -> FastAPI:
 
     @app.post("/api/frame")
     async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand"):
-        return JSONResponse(demo.frame(await request.body(), kind, severity, mode))
+        body = await request.body()
+        # Inference must not block the event loop (/info/reset can remain responsive).
+        # Reject overlap rather than queuing old images behind the current frame.
+        if processing.locked():
+            return JSONResponse({'error': 'frame processing busy; retry with a fresh frame'},
+                                status_code=503, headers={'Retry-After': '1'})
+        async with processing:
+            return JSONResponse(await run_in_threadpool(demo.frame, body, kind, severity, mode))
 
     @app.post("/api/reset")
     def reset():
