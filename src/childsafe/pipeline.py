@@ -226,6 +226,7 @@ class FramePipeline:
         self.timings = {}
         h, w = rgb.shape[:2]
         valid = frame_valid and frame_age_s <= self.cfg.get('runtime', {}).get('stale_frame_s', .25)
+        valid = valid and (processing_deadline is None or start <= processing_deadline)
         scene = SceneLandmarks()
         detections = self._timed('detector_s',self.detector.detect,rgb) if valid and source_ok else []
         active, retired = self.tracker.update(detections, t) if valid and source_ok else ([], set())
