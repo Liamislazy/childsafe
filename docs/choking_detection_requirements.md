@@ -118,3 +118,11 @@ bộ đệm đặc trưng trong RAM, tách âm thanh phòng khỏi âm thanh đ�
 kiểm tra clock/cửa sổ, loại dữ liệu cũ sau reconnect. Chưa nối vào runtime, chưa
 capture âm thanh, chưa có producer đặc trưng hay model nghẹn. Cờ `aligned` chỉ
 kiểm tra điều kiện ghép dữ liệu, không phải bằng chứng lâm sàng hoặc nhãn an toàn.
+
+### Kiểm tra nguồn âm thanh thực tế
+
+[Audit 12/10/2026](choking_audio_source_audit_2026_10_12.md) đã kiểm tra metadata
+COUGHVID v3: 27 bản ghi có ít nhất một checkbox `audible choking` true, trong đó
+1 thuộc người tự khai dưới 18; không xác nhận ca nghẹn trẻ do đồ chơi. Smarty4Covid
+có nhãn tương tự nhưng hiện hạn chế truy cập. Các nguồn này chưa giải quyết
+khoảng trống ground truth lâm sàng hoặc dữ liệu AV phù hợp mục tiêu ban đầu.
