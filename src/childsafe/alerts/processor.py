@@ -118,6 +118,8 @@ class AlertProcessor:
         visible = bool(f.get('mouth_visible', f.get('face_ok'))) and valid
         if modern and (not valid or f.get('association_ambiguous')):
             obj = None
+            if not valid:
+                self.obj = None
         if modern and (not f.get('classifier_ok', False) or not f.get('detector_ok', False)):
             obj = None
             self.obj = None
@@ -248,6 +250,8 @@ class AlertProcessor:
         # hand stays where the mouth was while the mouth is covered. Only an observed departure
         # (mouth visible, object/hand beyond d_exit), the person leaving or the source dropping ends it.
         hold_s = rc.get('caution_hold_s', 0.)
+        if not valid:
+            hold_s = min(hold_s,sc['lost_hold_s'])
         if level >= CAUTION:
             self.last_alert_t = t
         departed = visible and d is not None and d > tc['d_exit']
@@ -255,7 +259,7 @@ class AlertProcessor:
         if stop:
             self.last_alert_t = None
         elif level < CAUTION and self.last_alert_t is not None and hold_s > 0:
-            covered = (not visible and f.get('hand_ok') and
+            covered = (valid and not visible and f.get('hand_ok') and
                        ((not _isnan(f.get('d_last_mouth')) and f['d_last_mouth'] <= tc['d_exit']) or
                         (f.get('face_ok') and not _isnan(f.get(f'd_{self.norm}'))
                          and f[f'd_{self.norm}'] <= tc['d_exit'])))

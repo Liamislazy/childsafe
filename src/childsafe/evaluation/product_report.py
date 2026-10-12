@@ -41,6 +41,8 @@ def evaluate_session(features, annotations, cfg, start, end, scope='camera', bas
         raise ValueError('duplicate person sample')
     if not features.empty and features.session_id.nunique() != 1:
         raise ValueError('one runtime epoch per session manifest required')
+    if not features.empty and 'session_id' in annotations and not annotations.session_id.eq(features.session_id.iloc[0]).all():
+        raise ValueError('annotation belongs to a different runtime epoch')
     if ((annotations.start < start)|(annotations.end > end)|(annotations.start >= annotations.end)).any():
         raise ValueError('annotations outside declared session or invalid intervals')
     counts=dict(events=0,hits=0,false_alarms=0,unknown_alarm_episodes=0,negative_hours=0.,latencies=[],

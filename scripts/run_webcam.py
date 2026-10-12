@@ -133,8 +133,11 @@ def main():
             t = packet.received_t-t0
             age = max(0.,now-packet.received_t)
             lm, row, out = pipe.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), t,
-                                        received_t=packet.received_t,frame_age_s=age)
+                                        received_t=packet.received_t,frame_age_s=age,
+                                        processing_deadline=packet.received_t+rc['stale_frame_s'])
             logger.update(out)
+            for row in out['feature_rows']:
+                row['capture_slot_overwrites'] = cap.slot.overwrites
             if args.log_features:
                 feats.extend({**f, 'condition': args.condition} for f in out['feature_rows'])
             now = time.perf_counter()

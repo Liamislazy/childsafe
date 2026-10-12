@@ -41,6 +41,12 @@ class FramePipeline:
     def __init__(self, cfg, ckpt, components=None, classify_all=False, classify_input='hand_crop',
                  detector=None, landmark_factory=None, classifier=None):
         self.cfg, self.components = cfg, components
+        from childsafe.evaluation.sessions import config_hash,file_hash,code_hash
+        from pathlib import Path
+        weights = cfg.get('detector',{}).get('weights','')
+        self.provenance = dict(config_sha256=config_hash(cfg),code_sha256=code_hash(),
+                               classifier_sha256=file_hash(ckpt) if ckpt and Path(ckpt).is_file() else None,
+                               detector_sha256=file_hash(weights) if weights and Path(weights).is_file() else None)
         dc = cfg.get('detector', {})
         self.detector = detector if detector is not None else SegmentationDetector(
             dc.get('weights', 'models/yolo11n-seg.pt'), dc.get('min_conf', .5),
@@ -224,6 +230,9 @@ class FramePipeline:
                 processing_deadline=None):
         start = time.perf_counter()
         self.timings = {}
+        import copy
+        prior_processors = ({pid:copy.deepcopy(state['processor']) for pid,state in self.states.items()}
+                            if processing_deadline is not None else {})
         h, w = rgb.shape[:2]
         valid = frame_valid and frame_age_s <= self.cfg.get('runtime', {}).get('stale_frame_s', .25)
         valid = valid and (processing_deadline is None or start <= processing_deadline)
@@ -381,10 +390,8 @@ class FramePipeline:
                 hand_result = self._hand_crop_fallback(state, rgb, f, t)
                 if hand_result is not None:
                     obj_result = hand_result
-            # Both distances (hand->mouth and object->mouth): each alone misses cases (object hidden
-            # in the hand / object tip far from the fingers), so the closer one counts. A YOLO object
-            # whose classification is confidently unsafe is confirmed evidence when either distance
-            # is near, like the hand-area check; otherwise the confident-mask rule applies as before.
+            # Keep both distances for diagnostics/suspicion. Only a reliable visible
+            # object mask can establish proximity evidence; classification is contextual.
             if obj is not None and obj_result is not None:
                 state['obj_result'] = (t, obj_result)
             recent = state.get('obj_result') if obj is not None else None
@@ -438,6 +445,8 @@ class FramePipeline:
                 self._release_landmarks(state)
                 del self.states[pid]
         inference_s = time.perf_counter()-start
+        from childsafe.runtime.resources import peak_memory_bytes
+        memory = peak_memory_bytes()
         if self.classifier is not None:
             self.classifier_error = next((state['classifier_error'] for state in self.states.values()
                                           if state['classifier_error']), '')
@@ -445,16 +454,21 @@ class FramePipeline:
             f['inference_s'] = inference_s
             f.update({name:self.timings.get(name,0.) for name in ('detector_s','landmarks_s','classifier_s','quality_s')})
             f['other_s'] = max(0.,inference_s-sum(self.timings.values()))
+            f['peak_process_memory_bytes'] = memory
         # A later person's work may expire the whole shared source sample.
         if processing_deadline is not None and time.perf_counter() > processing_deadline:
             outputs = []
             for f in rows:
-                f.update(frame_valid=False,mouth_visible=False,proximity_evidence=False,history_reset=True)
+                f.update(frame_valid=False,mouth_visible=False,face_ok=False,hand_ok=False,
+                         proximity_evidence=False,history_reset=False,d_last_mouth=math.nan)
                 f.setdefault('quality_reasons',[]).append('frame expired during inference')
                 state = self.states.get(f['person_id'])
                 if state is not None:
+                    if f['person_id'] in prior_processors:
+                        state['processor'] = prior_processors[f['person_id']]
+                    else:
+                        state['processor'].reset()
                     self._clear_classification(state)
-                    state['processor'].reset()
                     result = state['processor'].step(f)
                     result.update(person_id=f['person_id'],session_id=self.session_id,
                                   visible=False,box=state.get('box'))
@@ -478,6 +492,11 @@ class FramePipeline:
                      frame_age_s=frame_age_s,inference_s=inference_s,
                      received_t=received_t if received_t is not None else t)
             rows.append(f)
+            f.update({name:self.timings.get(name,0.) for name in ('detector_s','landmarks_s','classifier_s','quality_s')})
+            f['other_s'] = max(0.,inference_s-sum(self.timings.values()))
+            f['peak_process_memory_bytes'] = memory
+        for f in rows:
+            f.update(self.provenance)
         return scene, rows[0] if rows else {}, aggregate
 
     def close(self):

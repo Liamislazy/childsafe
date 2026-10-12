@@ -17,7 +17,7 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from PIL import Image
+from PIL import Image,UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
 from childsafe.alerts.processor import LEVEL_NAMES, AlertProcessor
@@ -29,6 +29,8 @@ from childsafe.vision.elevated import ElevatedQuality
 from childsafe.pipeline import FramePipeline
 from childsafe.vision.tracking import iou
 from childsafe.runtime.browser import BrowserLease, FrameRejected
+from childsafe.web.labels import reason_vi
+from childsafe.evaluation.sessions import file_hash,config_hash,code_hash
 
 STATIC = Path(__file__).parent / "static"
 
@@ -46,7 +48,10 @@ def _thumb(rgb: np.ndarray, size: int = 160) -> str:
 
 
 def _decode(body: bytes) -> np.ndarray:
-    return np.asarray(Image.open(io.BytesIO(body)).convert("RGB"))
+    with Image.open(io.BytesIO(body)) as image:
+        if image.width*image.height > 12_000_000:
+            raise ValueError('decoded image exceeds pixel limit')
+        return np.asarray(image.convert("RGB"))
 
 
 def _displayed_people(persons):
@@ -150,14 +155,19 @@ class RuntimeDemo(Demo):
         self.paths = {self.live_name: models[self.live_name]}
         self.classifiers = {self.live_name: ObjectClassifier(self.paths[self.live_name])}
         self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
+        self.provenance = {'config_sha256':config_hash(cfg),'code_sha256':code_hash(),'classifier_sha256':file_hash(models[self.live_name]),
+                           'detector_sha256':file_hash(cfg['detector']['weights']) if Path(cfg['detector']['weights']).is_file() else None}
+        self.pipeline.provenance = self.provenance
         self.t0 = time.perf_counter()
         self.rows = []
+        self.annotations, self.open_annotation = [], None
         self.recording_full = False
         self.prev_frame_t = None
 
     def reset(self):
         self.pipeline.reset()
         self.rows = []
+        self.annotations, self.open_annotation = [], None
         self.recording_full = False
         self.prev_frame_t = None
         self.slots = {}
@@ -185,7 +195,8 @@ class RuntimeDemo(Demo):
     def close(self):
         self.pipeline.close()
 
-    def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.):
+    def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.,
+              sequence=None,capture_t=None,clock_uncertainty_s=None):
         rgb = _decode(body)
         if kind in KINDS and severity > 0:
             rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
@@ -198,6 +209,9 @@ class RuntimeDemo(Demo):
             self.prev_frame_t = t
             scene, _, out = self.pipeline.process(rgb, t, frame_age_s=frame_age_s,
                                                  processing_deadline=deadline)
+            for row in out['feature_rows']:
+                row.update(browser_sequence=sequence,browser_capture_t=capture_t,
+                           clock_uncertainty_s=clock_uncertainty_s)
             if not self.recording_full:
                 if len(self.rows)+len(out['feature_rows']) <= 100000:
                     self.rows.extend(dict(row) for row in out['feature_rows'])
@@ -214,7 +228,7 @@ class RuntimeDemo(Demo):
                     'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
                     'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
                     'observation': person['observation'], 'green': person['green'],
-                    'reason': person['reason'], 'reasons': person['observation_reasons'],
+                    'reason': person['reason'], 'reasons': [reason_vi(r) for r in person['observation_reasons']],
                     'face': bool(lm is not None and lm.face is not None),
                     'mouth_visible': bool(features.get('mouth_visible')),
                     'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
@@ -254,10 +268,11 @@ class RuntimeDemo(Demo):
                 limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
                                    f'vượt {max_gap*1000:.0f} ms: lịch sử cảnh báo bị đặt lại nên DANGER không tích lũy được. '
                                    'Giảm số người trong khung, đóng ứng dụng nặng, hoặc dùng GPU.')
-            return {'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
+            return {'t':t,'runtime_session_id':self.pipeline.session_id,
+                    'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
                     'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
                     'green':out['green'], 'observation':out['observation'],
-                    'reason':out['reason'], 'limitations':limitations,
+                    'reason':reason_vi(out['reason']), 'limitations':limitations,
                     'notify':any(p['notify'] for p in people),
                     'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
                     'ms':round(out['inference_s']*1000,1), 'frame_gap_ms':round(frame_gap*1000,1),
@@ -276,6 +291,9 @@ def create_app(demo: Demo) -> FastAPI:
         try:
             result = lease.start(client_t)
             await run_in_threadpool(demo.reset)
+            demo.session_start_s=time.perf_counter()-getattr(demo,'t0',time.perf_counter())
+            demo.session_end_s=None
+            result.update(t=demo.session_start_s,runtime_session_id=getattr(getattr(demo,'pipeline',None),'session_id',None))
             return result
         except FrameRejected as exc:
             return JSONResponse({'error':str(exc)},status_code=409)
@@ -291,6 +309,7 @@ def create_app(demo: Demo) -> FastAPI:
     async def camera_end(token: str):
         try:
             lease.end(token)
+            demo.session_end_s=time.perf_counter()-getattr(demo,'t0',time.perf_counter())
             return {'ok':True}
         except FrameRejected as exc:
             return JSONResponse({'error':str(exc)},status_code=409)
@@ -313,6 +332,8 @@ def create_app(demo: Demo) -> FastAPI:
         return {"models": {n: Path(p).parent.name for n, p in demo.paths.items()}, "corruptions": KINDS,
                 'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
                 'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
+                'provenance':getattr(demo,'provenance',{}),
+                'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")
@@ -335,13 +356,16 @@ def create_app(demo: Demo) -> FastAPI:
             try:
                 deadline, age = lease.frame(token,sequence,capture_t)
                 result = await run_in_threadpool(demo.frame, body, kind, severity, mode,
-                                                deadline=deadline,frame_age_s=age)
+                                                deadline=deadline,frame_age_s=age,sequence=sequence,
+                                                capture_t=capture_t,clock_uncertainty_s=lease.uncertainty)
                 lease.check(token)  # Stop/expiry while inference ran discards the reply.
                 result['clock_uncertainty_s'] = lease.uncertainty
                 result['age_scope'] = 'browser snapshot to server; not camera sensor latency'
                 return JSONResponse(result)
             except FrameRejected as exc:
                 return JSONResponse({'error':str(exc)},status_code=409)
+            except (UnidentifiedImageError,ValueError,OSError):
+                return JSONResponse({'error':'invalid image or image exceeds pixel limit'},status_code=422)
 
     @app.post("/api/reset")
     async def reset(token: str = ''):
@@ -355,6 +379,9 @@ def create_app(demo: Demo) -> FastAPI:
                 return JSONResponse({'error':str(exc)},status_code=409)
         with demo.lock:
             demo.reset()
+            if isinstance(demo,RuntimeDemo):
+                demo.session_start_s=time.perf_counter()-demo.t0
+                demo.session_end_s=None
         return {"ok": True}
 
     @app.get('/api/session.csv')
@@ -363,5 +390,47 @@ def create_app(demo: Demo) -> FastAPI:
             return Response(status_code=404)
         return Response(demo.session_csv(), media_type='text/csv',
                         headers={'Content-Disposition':'attachment; filename="camera_session.csv"'})
+
+    @app.post('/api/annotation')
+    async def annotation(token: str, action: str, label: str='uncertain'):
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        try:
+            lease.check(token)
+            if action not in ('start','end') or label not in ('unsafe_mouthing','non_event','uncertain'):
+                raise FrameRejected('invalid annotation action/label')
+            now=time.perf_counter()-demo.t0
+            if action=='start':
+                if demo.open_annotation is not None:
+                    raise FrameRejected('finish the current annotation first')
+                demo.open_annotation={'start':now,'label':label,'session_id':demo.pipeline.session_id}
+            else:
+                if demo.open_annotation is None:
+                    raise FrameRejected('no open annotation')
+                if len(demo.annotations)>=10000:
+                    raise FrameRejected('annotation capacity reached; export and reset')
+                demo.annotations.append(dict(demo.open_annotation,end=now))
+                demo.open_annotation=None
+            return {'t':now,'action':action,'scope':'observer click received by server; annotation delay not measured'}
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.get('/api/annotations.csv')
+    async def annotations():
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        import pandas as pd
+        return Response(pd.DataFrame(demo.annotations,columns=['start','end','label','session_id']).to_csv(index=False),
+                        media_type='text/csv',headers={'Content-Disposition':'attachment; filename="annotations.csv"'})
+
+    @app.get('/api/session.json')
+    async def session_metadata():
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        return {'provenance':getattr(demo,'provenance',{}),'start_s':getattr(demo,'session_start_s',None),
+                'end_s':getattr(demo,'session_end_s',None),'runtime_session_id':demo.pipeline.session_id,
+                'unfinished_annotation':getattr(demo,'open_annotation',None) is not None,
+                'annotation_clock':'observer click arrival on server; human reaction delay not measured',
+                'scope':'numerical metadata only; no sensor capture timestamp or medical diagnosis'}
 
     return app

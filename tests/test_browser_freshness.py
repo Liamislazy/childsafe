@@ -76,3 +76,23 @@ def test_pipeline_expired_processing_cannot_publish_new_danger():
         assert all(not f['frame_valid'] for f in out['feature_rows'])
         assert replay(pd.DataFrame(out['feature_rows']),demo.cfg).level.max() == 0
     finally: demo.close()
+
+
+def test_expired_frame_preserves_only_brief_prior_risk_and_replays_end_reason():
+    from test_web_runtime import runtime
+    import numpy as np
+    import pandas as pd
+    from childsafe.evaluation.replay import replay
+    demo=runtime('unsafe'); rgb=np.full((160,160,3),140,np.uint8); rows=[]
+    try:
+        for i in range(15):
+            _,_,out=demo.pipeline.process(rgb,i*.1); rows.extend(out['feature_rows'])
+        assert out['level']==2
+        _,_,short=demo.pipeline.process(rgb,1.5,processing_deadline=-1.)
+        rows.extend(short['feature_rows']); assert short['level']==2 and not short['green']
+        _,_,long=demo.pipeline.process(rgb,2.5,processing_deadline=-1.)
+        rows.extend(long['feature_rows']); assert long['level']==0
+        assert long['persons'][0]['end_reason']=='observation_lost'
+        replayed=replay(pd.DataFrame(rows),demo.cfg)
+        assert replayed.iloc[-1].end_reason=='observation_lost' and replayed.iloc[-1].level==0
+    finally: demo.close()

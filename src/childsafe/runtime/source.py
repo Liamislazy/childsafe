@@ -16,9 +16,12 @@ class LatestSlot:
     def __init__(self):
         self.condition = Condition()
         self.packet = None
+        self.overwrites = 0
 
     def publish(self, packet):
         with self.condition:
+            if self.packet is not None and getattr(self.packet,'source_ok',True):
+                self.overwrites += 1
             self.packet = packet
             self.condition.notify_all()
 

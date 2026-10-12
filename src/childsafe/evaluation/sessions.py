@@ -17,6 +17,14 @@ def file_hash(path):
     return digest.hexdigest()
 
 
+def code_hash():
+    root=Path(__file__).resolve().parents[1]
+    digest=hashlib.sha256()
+    for path in sorted(root.rglob('*.py')):
+        digest.update(path.relative_to(root).as_posix().encode()+b'\0'+path.read_bytes())
+    return digest.hexdigest()
+
+
 def validate_sessions(sessions):
     seen, subjects = set(), {}
     for s in sessions:
@@ -29,6 +37,9 @@ def validate_sessions(sessions):
             raise ValueError('adult consent must be explicitly confirmed')
         if not s['subjects'] or not s['condition']:
             raise ValueError('subjects and condition required')
+        if (len(set(s['subjects'])) != len(s['subjects']) or
+                any(not isinstance(p,str) or not re.fullmatch(r'[a-z0-9_-]+',p) for p in s['subjects'])):
+            raise ValueError('use distinct stable lowercase anonymous subject slugs')
         for subject in s['subjects']:
             if subject in subjects and subjects[subject] != s['split']:
                 raise ValueError('subject appears in both dev and test')
@@ -43,6 +54,7 @@ def create_session(root, recording_id, split, subjects, condition, cfg, ckpt,
     meta = dict(version=1,recording_id=recording_id,split=split,subjects=subjects,
                 subject_kind=subject_kind,consent_confirmed=consent_confirmed,condition=condition,
                 config_sha256=config_hash(cfg),classifier_sha256=file_hash(ckpt),
+                code_sha256=code_hash(),
                 detector_sha256=file_hash(cfg['detector']['weights']),
                 annotation_scope='camera',start_s=None,end_s=None,
                 features='features.csv',annotations='annotations.csv',

@@ -15,7 +15,8 @@ class EventLogger:
         self.path = Path(log_dir) / f"events_{time.strftime('%Y%m%d_%H%M%S')}.csv"
         self.f = open(self.path, "w", newline="", encoding="utf-8")
         self.w = csv.writer(self.f)
-        self.w.writerow(["wall_time", "start_s", "end_s", "level", "max_p_unsafe", "obj_class", "reason", 'person_id', 'end_reason'])
+        self.w.writerow(["wall_time", "start_s", "end_s", "level", "max_p_unsafe", "obj_class", "reason", 'person_id', 'end_reason',
+                         'session_id','observation_at_start','observation_reasons_at_start'])
         self.cur = None
         self.people = {}
 
@@ -27,10 +28,13 @@ class EventLogger:
         pid = out.get('person_id', 0)
         self.cur = self.people.get(pid)
         lvl = out["level"]
-        if self.cur and (lvl != self.cur['level'] or out.get('end_reason')):
+        if self.cur and (lvl != self.cur['level'] or out.get('end_reason') or
+                         out.get('session_id',0) != self.cur['session_id']):
             self._flush(out['t'], out.get('end_reason') or 'risk_changed')
         if lvl != NORMAL and self.cur is None and not out.get('end_reason'):
             self.cur = {"start": out["t"], "level": lvl, "p": -1.0, "cls": "", "reason": out["reason"], 'person_id': pid}
+            self.cur.update(session_id=out.get('session_id',0),observation=out.get('observation','legacy_unknown'),
+                            observation_reasons='; '.join(out.get('observation_reasons',[])))
         if self.cur is not None:
             p = out["p_unsafe"]
             if not math.isnan(p) and p > self.cur["p"]:
@@ -40,7 +44,8 @@ class EventLogger:
     def _flush(self, t_end: float, end_reason='risk_changed'):
         c = self.cur
         self.w.writerow([time.strftime("%Y-%m-%d %H:%M:%S"), f"{c['start']:.2f}", f"{t_end:.2f}",
-                         LEVEL_NAMES[c["level"]], f"{c['p']:.3f}" if c["p"] >= 0 else "", c["cls"], c["reason"], c['person_id'], end_reason])
+                         LEVEL_NAMES[c["level"]], f"{c['p']:.3f}" if c["p"] >= 0 else "", c["cls"], c["reason"], c['person_id'], end_reason,
+                         c['session_id'],c['observation'],c['observation_reasons']])
         self.f.flush()
         self.cur = None
 

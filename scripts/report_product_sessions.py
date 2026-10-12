@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import pandas as pd
 from childsafe.config import load_config
-from childsafe.evaluation.sessions import validate_sessions,config_hash,file_hash
+from childsafe.evaluation.sessions import validate_sessions,config_hash,file_hash,code_hash
 from childsafe.evaluation.product_report import evaluate_session,summarize
 from childsafe.alerts.processor import Components
 
@@ -19,7 +19,11 @@ if __name__=='__main__':
         if m['split']!=a.split: continue
         cfg=load_config(path.parent/'config.json')
         if config_hash(cfg)!=m['config_sha256']: raise ValueError('session config hash mismatch')
+        if code_hash()!=m['code_sha256']: raise ValueError('runtime source changed; replay with the recorded source revision')
         f=pd.read_csv(path.parent/m['features']); gt=pd.read_csv(path.parent/m['annotations'])
+        for field in ('config_sha256','classifier_sha256','detector_sha256','code_sha256'):
+            if field not in f or f[field].isna().any() or not f[field].eq(m[field]).all():
+                raise ValueError('feature provenance does not match session manifest: '+field)
         result=evaluate_session(f,gt,cfg,m['start_s'],m['end_s'],m['annotation_scope'])
         result.update(recording_id=m['recording_id'],condition=m['condition'],
                       config_sha256=m['config_sha256'],input_features_sha256=file_hash(path.parent/m['features']),

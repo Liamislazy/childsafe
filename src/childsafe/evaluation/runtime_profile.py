@@ -18,6 +18,8 @@ def runtime_profile(features, max_gap_s=.25):
               'continuity_breaks':int((gaps > max_gap_s).sum()),
               'processed_fps':len(gaps)/gaps.sum() if len(gaps) and gaps.sum() > 0 else None,
               'scope':'processed sample times; not sensor capture rate or clinical latency'}
+    result['peak_process_memory_bytes'] = int(frames.peak_process_memory_bytes.max()) if 'peak_process_memory_bytes' in frames and frames.peak_process_memory_bytes.notna().any() else None
+    result['capture_slot_overwrites_total'] = int(frames.capture_slot_overwrites.max()) if 'capture_slot_overwrites' in frames and frames.capture_slot_overwrites.notna().any() else None
     for field in ('detector_s','landmarks_s','classifier_s','quality_s','other_s','inference_s','frame_age_s'):
         values = frames[field].dropna().to_numpy(float) if field in frames else []
         values = [v for v in values if math.isfinite(v)]

@@ -1,5 +1,9 @@
 # ChildSafe: thử camera góc cao
 
+> Runtime sản phẩm đã cập nhật ngày 12/10/2026: xem [hướng dẫn mới](product_runtime_guide.md).
+> Crop có thể phóng to để tìm mốc, nhưng quality gate dùng pixel gốc. Classifier/tay
+> không thay mask định vị; ảnh hết hạn trong lúc inference không thêm nguy cơ mới.
+
 Ngày triển khai: 07/10/2026. Đây là runtime nghiên cứu, chưa được hiệu chuẩn hoặc nghiệm thu bằng webcam góc cao. Không thay thế giám sát của người lớn.
 
 ## Hành vi và giới hạn
