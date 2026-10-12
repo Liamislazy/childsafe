@@ -52,8 +52,11 @@ class Track:
 
 
 class PersonTracker:
-    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15, primary_only=False):
+    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15, primary_only=False, overlap_iou=.4):
         self.max_people, self.hold_s = max_people, hold_s
+        # Two people sitting side by side usually overlap a little (IoU 0.05-0.3). That alone is
+        # not identity ambiguity; only heavy overlap (crossing) or unclear matching is.
+        self.overlap_iou = overlap_iou
         # Opt-in for a one-subject setup: follow only the largest person box and ignore the rest
         # (e.g. a photo, poster or screen with a face). Do NOT use when the subject may be the
         # smaller one, such as a doll or child next to an adult.
@@ -91,7 +94,7 @@ class PersonTracker:
         retired = set(self.tracks)-set(old)
         for i, d in enumerate(people):
             s = scores[i]
-            overlap = any(i != j and iou(d.box, other.box) > .1 for j, other in enumerate(people))
+            overlap = any(i != j and iou(d.box, other.box) > self.overlap_iou for j, other in enumerate(people))
             ambiguous = (overflow or overlap or
                          (len(s) > 1 and s[0][0] >= self.min_iou and s[0][0]-s[1][0] < self.margin) or
                          (i in choices and list(choices.values()).count(choices[i]) > 1))
@@ -108,6 +111,62 @@ class PersonTracker:
         self.tracks = {k: v for k, v in old.items() if k not in retired and k not in current_ids}
         self.tracks.update({v.person_id: v for v in active})
         return active, retired
+
+
+def _mouth_distance(lm, hand):
+    """Closest hand point to the person's mouth, in face widths; None without a face."""
+    if lm is None or getattr(lm, 'face', None) is None:
+        return None
+    mouth = lm.face[[13, 14, 78, 308], :2].mean(0)
+    width = float(np.linalg.norm(lm.face[234, :2] - lm.face[454, :2]))
+    return float(np.linalg.norm(hand[:, :2] - mouth, axis=1).min()) / max(width, 1.)
+
+
+def resolve_hands(people, boxes, ratio=1.5, max_own=1.0):
+    """Decide whose hand is whose when two people are close, instead of blocking both.
+
+    people: {pid: landmarks in original-image coordinates}; boxes: {pid: person box}.
+    1. The same physical hand found in two people's crops is kept only for the person whose
+       mouth it is clearly closer to (by `ratio`, in face widths) and removed from the other.
+    2. A hand inside another person's box is still that person's own if it is clearly closer to
+       its own mouth than to the other's (or within `max_own` face widths when the other face is
+       not visible). Otherwise both people are ambiguous, as before.
+    Returns the set of ambiguous person IDs. Mutates lm.hands / lm.handedness."""
+    ambiguous = set()
+    pids = list(people)
+    drop = {pid: set() for pid in pids}
+    for i, a in enumerate(pids):
+        for b in pids[i+1:]:
+            for ia, ha in enumerate(people[a].hands):
+                for ib, hb in enumerate(people[b].hands):
+                    size = max(float(np.ptp(ha[:, :2], axis=0).max()), 1.)
+                    if float(np.linalg.norm(ha[:, :2] - hb[:, :2], axis=1).mean()) > .25 * size:
+                        continue
+                    da, db = _mouth_distance(people[a], ha), _mouth_distance(people[b], hb)
+                    if da is not None and (db is None or da * ratio <= db):
+                        drop[b].add(ib)
+                    elif db is not None and (da is None or db * ratio <= da):
+                        drop[a].add(ia)
+                    else:
+                        ambiguous.update([a, b])
+    for pid in pids:
+        lm = people[pid]
+        keep = [k for k in range(len(lm.hands)) if k not in drop[pid]]
+        lm.hands = [lm.hands[k] for k in keep]
+        if hasattr(lm, 'handedness'):
+            lm.handedness = [lm.handedness[k] for k in keep if k < len(lm.handedness)]
+    for pid, lm in people.items():
+        for hand in lm.hands:
+            cx, cy = hand[:, :2].mean(0)
+            for other, box in boxes.items():
+                if other == pid or not (box[0] <= cx <= box[2] and box[1] <= cy <= box[3]):
+                    continue
+                own, theirs = _mouth_distance(lm, hand), _mouth_distance(people.get(other), hand)
+                if own is not None and ((theirs is None and own <= max_own) or
+                                        (theirs is not None and own * ratio <= theirs)):
+                    continue   # clearly this person's own hand
+                ambiguous.update([pid, other])
+    return ambiguous
 
 
 def to_original(lm, box, width, height):

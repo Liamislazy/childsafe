@@ -7,7 +7,7 @@ import time
 
 from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
-from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou
+from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
 
 OBJ_COLUMNS = ['p_unsafe_raw','p_unsafe_cal','obj_class','obj_conf','p_unknown_cal']
@@ -180,12 +180,9 @@ class FramePipeline:
                 except Exception as exc:
                     state['error'] = type(exc).__name__
         ambiguous = {p.person_id for p in active if p.ambiguous}
-        for pid, lm in scene.people.items():
-            for hand in lm.hands:
-                center = hand[:, :2].mean(0)
-                for other, box in scene.boxes.items():
-                    if other != pid and box[0] <= center[0] <= box[2] and box[1] <= center[1] <= box[3]:
-                        ambiguous.update([pid, other])
+        # Whose hand is whose: duplicates across crops go to the person whose mouth they are
+        # clearly closer to; only truly unclear hands make people ambiguous (see resolve_hands).
+        ambiguous |= resolve_hands(scene.people, scene.boxes)
         assigned = {p.person_id: [] for p in active}
         scene.objects = [d for d in detections if d.label != 'person']
         for obj in scene.objects:

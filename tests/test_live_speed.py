@@ -68,8 +68,8 @@ def test_overlapping_people_do_not_create_a_landmark_model_per_frame():
 
     class Overlap:
         ok = True
-        def detect(self, rgb):   # IoU > 0.1 -> tracker marks both ambiguous -> new IDs every frame
-            return [Detection((10, 10, 120, 200), 'person', .9), Detection((60, 10, 170, 200), 'person', .9)]
+        def detect(self, rgb):   # IoU 0.57 (crossing) -> tracker marks both ambiguous -> new IDs every frame
+            return [Detection((10, 10, 120, 200), 'person', .9), Detection((40, 10, 150, 200), 'person', .9)]
 
     pipe = FramePipeline(load_config(), None, detector=Overlap(), landmark_factory=factory,
                          classifier=lambda *a: None)
