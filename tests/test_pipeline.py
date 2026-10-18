@@ -52,6 +52,8 @@ def test_calibrated_complete_detector_can_show_normal_observable_when_hands_are_
             out.hands = [np.column_stack((np.linspace(20,50,21),np.linspace(160,190,21),np.zeros(21)))]
             return out
     cfg = load_config(); cfg['quality']['calibrated'] = True
+    # This fixture supplies original-size coordinates, not zoomed inference coordinates.
+    cfg['landmarks']['zoom'] = False
     cfg['detector']['complete_object_coverage'] = True
     pipe = FramePipeline(cfg,None,detector=FakeDetector(),landmark_factory=VisibleLandmarks,
                          classifier=lambda *args: {})

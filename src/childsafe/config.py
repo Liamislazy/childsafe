@@ -6,6 +6,7 @@ A config file may start with `_base_: default.yaml` and list only the keys it ch
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 import yaml
 
@@ -23,7 +24,7 @@ def _merge(base: dict, over: dict) -> dict:
 
 def _read(path: Path) -> dict:
     with open(path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f) or {}
+        cfg = (json.load(f) if path.suffix.lower() == '.json' else yaml.safe_load(f)) or {}
     base = cfg.pop("_base_", None)
     return _merge(_read(path.parent / base), cfg) if base else cfg
 

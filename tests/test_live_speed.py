@@ -218,7 +218,8 @@ def _levels_without_yolo_object(cfg, result):
 
 def test_hand_crop_fallback_when_yolo_misses_the_held_object():
     unsafe = dict(p_unsafe_raw=.97, p_unsafe_cal=.95, obj_conf=.95, obj_class='knife', p_unknown_cal=0., top3=[])
-    assert 2 in _levels_without_yolo_object(load_config(), unsafe)                    # confident unsafe -> DANGER
+    assert 2 not in _levels_without_yolo_object(load_config(), unsafe)                # class is not localized evidence
+    assert 1 in _levels_without_yolo_object(load_config(), unsafe)
     unsure = dict(unsafe, p_unsafe_cal=.7, obj_conf=.75)
     assert 2 not in _levels_without_yolo_object(load_config(), unsure)                # below 0.8 -> no DANGER
     other = dict(unsafe, p_unsafe_cal=.05, obj_conf=.9, obj_class='other', p_unknown_cal=.9)
@@ -262,13 +263,19 @@ def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12, result=No
 
 def test_both_distances_are_reported_and_the_closer_one_counts():
     # hand at the mouth, object pointing away: near through the hand
-    person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 110, 140, 150), conf=.45)
+    person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 85, 140, 150), conf=.45)
     assert row['d_hand'] < .2 and row['d_object'] > .5 and row['distance_source'] == 'hand'
     assert person['near_frame'] and 1 in levels and 2 not in levels
     # hand further away, object tip at the mouth: near through the object
     person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.45)
     assert row['d_object'] < .1 and row['distance_source'] == 'object' and person['d'] < .1
     assert 1 in levels and 2 not in levels
+
+
+def test_distant_unheld_object_is_not_assigned_by_old_fixed_pixel_radius():
+    person,row,levels=_run_with_object(hand_at=(55,55),obj_box=(100,110,140,150),conf=.45)
+    assert not row['object_present'] and math.isnan(row['d_object'])
+    assert row['distance_source']=='hand' and 1 in levels and 2 not in levels
 
 
 def test_weak_outline_alone_never_confirms_danger():
@@ -278,10 +285,10 @@ def test_weak_outline_alone_never_confirms_danger():
         assert not row['proximity_evidence'] and 2 not in levels
 
 
-def test_confident_unsafe_object_near_mouth_reaches_danger_by_either_distance():
+def test_confident_classification_cannot_upgrade_weak_object_or_hand_distance():
     for hand_at, box in [((105, 100), (60, 50, 110, 105)), ((55, 55), (100, 110, 140, 150))]:
         person, row, levels = _run_with_object(hand_at=hand_at, obj_box=box, conf=.45, result=_unsafe())
-        assert row['evidence_source'] == 'classifier' and 2 in levels
+        assert not row['proximity_evidence'] and 2 not in levels and 1 in levels
 
 
 def test_zoomed_pass_finds_small_object_and_maps_it_back():
@@ -360,7 +367,8 @@ def test_far_person_is_zoomed_for_landmarks_and_mapped_back():
         lm = scene.people[out['persons'][0]['person_id']]
         assert lm.face is not None and abs(lm.face[:, 0].mean() - 340) < 2 and abs(lm.face[:, 1].mean() - 240) < 3
         assert abs(row['face_width'] - 28) < 1.5                        # 28 px in the original frame
-        assert row['mouth_visible']                                     # not rejected as "face too small"
+        assert not row['mouth_visible']                                # zoom does not restore original pixels
+        assert 'face too small' in row['quality_reasons']
     finally:
         pipe.close()
     cfg['landmarks']['zoom'] = False

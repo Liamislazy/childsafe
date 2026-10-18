@@ -56,6 +56,7 @@ def test_downloaded_model_demo_preprocessing_calibration_and_unknown_rejection(m
 
 @pytest.mark.skipif(not os.environ.get('CHILDSAFE_FULL_DATASET_CKPT'), reason='requires local full-data checkpoint and detector weights')
 def test_real_runtime_web_api_and_feature_export():
+    from browser_client import CameraClient as TestClient
     from childsafe.web.app import RuntimeDemo
     demo = RuntimeDemo(load_config(), {'full dataset':os.environ['CHILDSAFE_FULL_DATASET_CKPT']})
     try:

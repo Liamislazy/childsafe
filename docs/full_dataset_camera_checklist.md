@@ -1,5 +1,10 @@
 # Demo model đầy đủ và checklist camera góc cao
 
+> Các số và hành vi dưới đây là lịch sử kiểm tra 08/10. Bản 12/10 yêu cầu mask
+> định vị đáng tin cậy cho DANGER; hand crop chỉ CAUTION, gate quality dùng pixel
+> gốc. Xem [hướng dẫn hiện tại](product_runtime_guide.md); checkout hiện tại chưa
+> có checkpoint full-data và launcher dùng robust + other khi chạy mặc định.
+
 Checkpoint Kaggle đã được kiểm tra ngày 08/10/2026: EfficientNet-B0, 11 lớp, letterbox 224×224, temperature 1,7798. Train 16 epochs, checkpoint tốt nhất có `best_epoch=9` (lượt thứ 10). Test tổng hợp: accuracy 92,63%, unsafe recall 90,87%. Open Images test độc lập: accuracy 91,99%, unsafe recall 92,19%. Đây là kết quả phân loại ảnh; camera góc cao chưa được nghiệm thu.
 
 Kiểm tra tích hợp local sau sửa ảnh bút: 81 tests passed, 1 skipped (test detector với ảnh được duyệt riêng chưa được bật), 3 cảnh báo dependency deprecation. Test mới sử dụng checkpoint thật qua API ảnh/frame, xác minh letterbox, temperature và unknown rejection; kiểm tra pipeline thật và CSV cùng các chuỗi giả lập danger/caution/mất quan sát/reset qua API web. SHA-256 checkpoint: `76bb3a5f0928704c984de5150ac8cbf40157c25608c6d5374ba09c7a8d36d439`.

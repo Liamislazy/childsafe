@@ -68,7 +68,7 @@
 <body>
 <header>
   <h1>ChildSafe — thử cảnh báo camera</h1>
-  <span class="privacy">Runs only on this computer: frames are processed in memory and never saved.</span>
+  <span class="privacy">Xử lý trên máy này; ảnh chỉ nằm trong RAM, không lưu video.</span>
 </header>
 
 <main>
@@ -77,18 +77,29 @@
     <div class="card">
       <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
       <div class="controls">
-        <button id="startBtn" class="btn">Start camera</button>
-        <button id="resetBtn" class="btn ghost">Reset alerts</button>
+        <button id="startBtn" class="btn">Bật camera</button>
+        <button id="resetBtn" class="btn ghost">Đặt lại cảnh báo</button>
         <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
         <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
         <button id="testSound" class="btn ghost">Thử âm báo</button>
-        <label>Degrade frame
-          <select id="kind"><option value="">none</option></select></label>
-        <label>Severity <span id="sevVal">0</span>
+        <label>Thử giảm chất lượng ảnh
+          <select id="kind"><option value="">Không</option></select></label>
+        <label>Mức độ <span id="sevVal">0</span>
           <input id="sev" type="range" min="0" max="5" value="0"></label>
-        <span class="stats" id="stats">camera off</span>
+        <span class="stats" id="stats">Camera đã tắt</span>
       </div>
       <div id="liveErr" class="err"></div>
+      <div class="controls">
+        <label>Tình huống do người quan sát ghi nhãn
+          <select id="annotationLabel"><option value="non_event">Không có sự kiện nguy cơ</option>
+          <option value="unsafe_mouthing">Đạo cụ nguy hiểm tiến sát vùng miệng</option>
+          <option value="uncertain">Chưa rõ</option></select></label>
+        <button id="annotationStart" class="btn ghost">Đánh dấu bắt đầu</button>
+        <button id="annotationEnd" class="btn ghost">Đánh dấu kết thúc</button>
+        <a class="btn ghost" href="/api/annotations.csv" download="annotations.csv">Tải nhãn độc lập</a>
+        <a class="btn ghost" href="/api/session.json" download="session.json">Tải thông tin phiên</a>
+        <span id="annotationStatus" class="note"></span>
+      </div>
       <div class="note">Khung người có ID; điểm xanh là tay, hồng là miệng; đường vàng là mask vật. Không thấy tay/miệng/vật sẽ được nêu ở bảng trạng thái. Khoảng cách là tỷ lệ trên ảnh, không phải centimet. Số liệu tọa độ/trạng thái giữ trong RAM; tải xuống trước khi Reset hoặc bật phiên camera mới.</div>
     </div>
     <div><div id="runtimeStatus" class="card" role="status" aria-live="polite">Camera chưa bật</div><div class="models" id="liveModels"></div></div>
@@ -98,8 +109,38 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let info = null, running = false, stream = null, frames = 0, lastFpsT = performance.now();
+let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
+let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
+async function cameraClock(renew=false, generation=runToken) {
+  const sent = performance.now()/1000;
+  const q = new URLSearchParams({client_t:sent});
+  if (renew) q.set('token',cameraToken);
+  const response = await fetch('/api/camera/'+(renew?'renew':'start')+'?'+q,{method:'POST'});
+  const received = performance.now()/1000;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  if (generation !== runToken) {
+    if (!renew) await fetch('/api/camera/end?'+new URLSearchParams({token:data.token}),{method:'POST'});
+    throw new Error('Phiên camera đã kết thúc');
+  }
+  cameraToken = data.token;
+  const sync = await fetch('/api/camera/sync?'+new URLSearchParams({token:cameraToken,client_t:received}),{method:'POST'});
+  if (!sync.ok) throw new Error((await sync.json()).error);
+  if (generation !== runToken) throw new Error('Phiên camera đã kết thúc');
+  lastSync = performance.now();
+}
+async function nextFrame(v) {
+  if (v.requestVideoFrameCallback) {
+    const metadata = await new Promise(resolve => v.requestVideoFrameCallback((_,m)=>resolve(m)));
+    if (metadata.presentedFrames <= lastMediaFrame) return false;
+    lastMediaFrame = metadata.presentedFrames;
+  } else {
+    if (v.currentTime <= lastMediaFrame) return false;
+    lastMediaFrame = v.currentTime;
+  }
+  return true;
+}
 const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
 
 async function loadInfo() {
@@ -112,42 +153,72 @@ async function loadInfo() {
 // ---------- live ----------
 const work = document.createElement("canvas");
 async function start() {
+  if (starting) { stop(); return; }
   if (running) { stop(); return; }
+  starting = true;
+  $('startBtn').textContent='Hủy bật camera';
+  const generation = ++runToken;
+  let acquired;
   try {
     // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-  } catch (e) { $("liveErr").textContent = "Camera not available: " + e.message; return; }
+    acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  } catch (e) { if (generation === runToken) { stop(); $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
+  if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
+  stream = acquired;
   $("liveErr").textContent = "";
-  $("video").srcObject = stream; await $("video").play();
-  await fetch("/api/reset", { method: "POST" });
-  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
-  await audioContext.resume();
-  running = true; runToken++; lastReply = performance.now(); lastLevel = 0;
+  for (const track of stream.getVideoTracks()) track.addEventListener('ended',()=>{
+    if (generation !== runToken) return;
+    stop(); $('liveErr').textContent='Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.';
+  });
+  $("video").srcObject = stream;
+  try { await $("video").play(); await cameraClock(false,generation); } catch(e) {
+    if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
+  }
+  if (generation !== runToken) return;
+  sequence = 0; lastMediaFrame = -1;
+  if ($('sound').checked) {
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume().catch(()=>{ $('sound').checked=false; });
+  }
+  starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
   frames = 0; lastFpsT = performance.now();
-  $("startBtn").textContent = "Stop camera"; loop(runToken);
+  $("startBtn").textContent = "Tắt camera"; loop(runToken);
 }
 function stop() {
-  running = false; runToken++; $("startBtn").textContent = "Start camera";
+  starting = false;
+  if (cameraToken) fetch('/api/camera/end?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  cameraToken = '';
+  running = false; runToken++; $("startBtn").textContent = "Bật camera";
   if (stream) stream.getTracks().forEach(t => t.stop());
-  const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "camera off";
+  const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "Camera đã tắt";
   $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
 }
 
 async function loop(token) {
   if (!running || token !== runToken) return;
   const v = $("video");
+  try {
+    if (performance.now()-lastSync > 15000) await cameraClock(true,token);
+    if (!await nextFrame(v)) { requestAnimationFrame(()=>loop(token)); return; }
+  } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
+  if (!running || token !== runToken) return;
+  const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
   work.width = v.videoWidth; work.height = v.videoHeight;
   const wctx = work.getContext("2d");
   wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
   wctx.drawImage(v, 0, 0);
   const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
-  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value });
+  if (!running || token !== runToken) return;
+  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value,
+                                 token:cameraToken,sequence:++sequence,capture_t:captureT });
   try {
     const t0 = performance.now();
     const response = await fetch("/api/frame?" + q, { method: "POST", body: blob, signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('HTTP '+response.status);
     const res = await response.json();
     if (!running || token !== runToken) return;
+    if (performance.now()/1000-captureT > info.stale_frame_s) throw new Error('Kết quả ảnh đã cũ; đang lấy ảnh mới');
+    $("liveErr").textContent = "";
     lastReply = performance.now();
     draw(res);
     renderRuntime(res);
@@ -157,11 +228,17 @@ async function loop(token) {
     const now = performance.now();
     if (now - lastFpsT > 1000) {
       const gap = res.frame_gap_ms != null ? ` · frame gap ${res.frame_gap_ms.toFixed(0)}/${res.max_gap_ms.toFixed(0)} ms` : '';
-      $("stats").textContent = `${(frames * 1000 / (now - lastFpsT)).toFixed(1)} fps · server ${res.ms} ms · round trip ${(now - t0).toFixed(0)} ms${gap}`;
+      $("stats").textContent = `Phiên ${res.runtime_session_id} · t=${res.t.toFixed(2)}s · ${(frames * 1000 / (now - lastFpsT)).toFixed(1)} fps · xử lý ${res.ms} ms · vòng gửi/nhận ${(now - t0).toFixed(0)} ms${gap}`;
       $("stats").style.color = res.frame_gap_ms > res.max_gap_ms ? 'var(--danger)' : '';
       frames = 0; lastFpsT = now;
     }
-  } catch (e) { $("liveErr").textContent = "Server error: " + e.message; }
+  } catch (e) {
+    if (!running || token !== runToken) return;
+    $("liveErr").textContent = "Chưa có kết quả mới: " + e.message;
+    $('runtimeStatus').textContent='Thiếu dữ liệu quan sát; đang lấy ảnh mới.';
+    $('liveModels').replaceChildren();
+    $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
+  }
   requestAnimationFrame(() => loop(token));
 }
 
@@ -173,14 +250,14 @@ function beep(level) {
   oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
 }
 function renderRuntime(res) {
-  const names = ['BÌNH THƯỜNG', 'CẢNH GIÁC', 'NGUY HIỂM'];
+  const names = ['CHƯA GHI NHẬN NGUY CƠ', 'CẦN CHÚ Ý', 'NGUY CƠ CAO'];
   const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
   const status = $('runtimeStatus');
   status.replaceChildren();
   // Always show the danger level; observation quality is a separate note (it is never "complete"
   // while the camera is uncalibrated, which used to hide NORMAL behind a grey badge).
   const heading = document.createElement('h3'); heading.textContent = `Mức: ${names[res.level]}`;
-  heading.style.color = colors[res.level]; status.append(heading);
+  heading.style.color = res.level === 0 && !res.green ? '#64748b' : colors[res.level]; status.append(heading);
   if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
   const summary = document.createElement('p');
   summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
@@ -190,10 +267,14 @@ function renderRuntime(res) {
     const card=document.createElement('div'); card.className='card model';
     const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
     const level=document.createElement('div'); level.className='level '+person.level_name;
-    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế'); card.append(level);
+    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
+    if (person.level===0 && !person.green) level.style.color='#64748b';
+    card.append(level);
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
-      `Vật: ${person.object || 'chưa phát hiện'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
-      `Phân loại: ${person.class || 'chưa có'} (${person.status})`,
+      `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
+      `Vật định vị: ${person.object_localized ? (person.object || 'chưa rõ loại') : 'chưa có'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
+      `Phân loại: ${person.class || 'chưa có'} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[person.status] || person.status})`,
+      `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
       `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
       `Dùng: ${person.d_source === 'object' ? 'vật' : 'tay'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
@@ -219,7 +300,7 @@ function draw(res) {
   const P = ([x, y]) => [ox + x * s, oy + y * s];
   const worst = res.level;
   const css = LEVEL_COLOR();
-  const col = css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();   // border = danger level
+  const col = worst===0 && !res.green ? '#9aa8ba' : css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();
   ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.strokeRect(2, 2, st.width - 4, st.height - 4);
   for (const person of res.people) {
   if (person.box) { const [a, b] = [P([person.box[0], person.box[1]]), P([person.box[2], person.box[3]])];
@@ -239,12 +320,25 @@ function draw(res) {
 
 
 // ---------- wiring ----------
+document.addEventListener('visibilitychange',()=>{
+  if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
+});
 $("startBtn").onclick = start;
 $("testSound").onclick = async () => {
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume(); beep(1);
 };
-$("resetBtn").onclick = () => fetch("/api/reset", { method: "POST" });
+$("resetBtn").onclick = async () => {
+  const response = await fetch('/api/reset?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  if (!response.ok) $("liveErr").textContent=(await response.json()).error;
+};
+for (const action of ['start','end']) {
+  $('annotation'+(action==='start'?'Start':'End')).onclick=async()=>{
+    const response=await fetch('/api/annotation?'+new URLSearchParams({token:cameraToken,action,label:$('annotationLabel').value}),{method:'POST'});
+    const result=await response.json();
+    $('annotationStatus').textContent=response.ok ? `${action==='start'?'Bắt đầu':'Kết thúc'}: t=${result.t.toFixed(2)}s` : result.error;
+  };
+}
 $("sev").oninput = () => $("sevVal").textContent = $("sev").value;
 loadInfo();
 </script>

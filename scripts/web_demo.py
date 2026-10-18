@@ -14,6 +14,7 @@ import uvicorn
 
 from childsafe.config import ROOT, FULL_DATASET_CHECKPOINT, load_config
 from childsafe.web.app import RuntimeDemo, create_app
+from childsafe.runtime import configure_runtime
 
 RUNS = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs"
 # The FIRST existing checkpoint drives live alerts, so models with an "other" class come first:
@@ -40,6 +41,7 @@ def main():
         if not Path(p).exists():
             raise SystemExit(f"checkpoint for '{name}' not found: {p}")
     cfg = load_config(args.config)
+    configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True
     demo = RuntimeDemo(cfg, models)

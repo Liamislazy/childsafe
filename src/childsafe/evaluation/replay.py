@@ -55,8 +55,12 @@ def aggregate_results(out: pd.DataFrame) -> pd.DataFrame:
         qualities = group['observation']
         quality = ('unobservable' if (qualities == 'unobservable').any() else
                    'degraded' if (qualities == 'degraded').any() else 'observable')
+        images = group.image_observation
+        image_quality = ('unobservable' if (images == 'unobservable').any() else
+                         'degraded' if (images == 'degraded').any() else 'observable')
         rows.append(dict(video=video,session_id=session,t=t,level=int(group.level.max()),
-                         observation=quality,inference_s=group.inference_s.max(),frame_age_s=group.frame_age_s.max()))
+                         observation=quality,image_observation=image_quality,
+                         inference_s=group.inference_s.max(),frame_age_s=group.frame_age_s.max()))
     return pd.DataFrame(rows)
 
 

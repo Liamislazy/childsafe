@@ -11,7 +11,8 @@ import math
 from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
-from childsafe.alerts.observation import observation
+from childsafe.alerts.observation import observation, image_observation
+from childsafe.alerts.hazards import assess_hazard
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
 NORMAL, CAUTION, DANGER = 0, 1, 2
@@ -113,15 +114,18 @@ class AlertProcessor:
             self.obj = None
         self.last_step_t = t
         quality, quality_reasons = observation(f)
+        image_quality, image_reasons = image_observation(f)
         modern = 'schema_version' in f
         valid = f.get('frame_valid', True) and f.get('source_ok', True)
         visible = bool(f.get('mouth_visible', f.get('face_ok'))) and valid
         if modern and (not valid or f.get('association_ambiguous')):
             obj = None
+            if not valid:
+                self.obj = None
         if modern and (not f.get('classifier_ok', False) or not f.get('detector_ok', False)):
             obj = None
             self.obj = None
-        if modern and f.get('object_present') is False:
+        if modern and f.get('object_present') is False and f.get('evidence_source')!='hand_crop':
             obj = None
             self.obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
@@ -218,20 +222,25 @@ class AlertProcessor:
         else:
             status, p_unsafe = "unsafe", 1.0
 
+        hazard = assess_hazard(obj_class,status,self.cfg,self.c.object_gate)
+
         # ---- D3 alert matrix ------------------------------------------------------------
         level, reason = NORMAL, ""
         if near:
-            if (status == 'unsafe' and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
+            if (status == 'unsafe' and (not modern or hazard.status == 'known_hazard')
+                    and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
                     and (not modern or f.get('proximity_evidence', False))):
                 level, reason = DANGER, "unsafe object near mouth in image"
             elif status in ("unsafe", "uncertain", "none"):
                 level, reason = CAUTION, f"{status} object near mouth"
+            elif modern:
+                level, reason = CAUTION, "object near mouth; category does not establish safety"
             elif status == "safe" and dwell >= rc["dwell_safe_caution_s"]:
                 level, reason = CAUTION, "safe object at mouth for long"   # safe objects cap at caution
         elif (self.c.approach and d is not None and status == "unsafe" and ttc < rc["ttc_caution_s"]
               and d < self.cfg["cascade"]["d_far"]):
             level, reason = CAUTION, "unsafe object approaching"
-        if modern and near_frame and not f.get('proximity_evidence',False) and status != 'safe':
+        if modern and near_frame and not f.get('proximity_evidence',False):
             level,reason = CAUTION,'suspected proximity; reliable mask evidence missing'
         candidate_d = f.get('candidate_object_d_relative', math.nan)
         if (modern and valid and visible and not f.get('association_ambiguous',False)
@@ -248,6 +257,8 @@ class AlertProcessor:
         # hand stays where the mouth was while the mouth is covered. Only an observed departure
         # (mouth visible, object/hand beyond d_exit), the person leaving or the source dropping ends it.
         hold_s = rc.get('caution_hold_s', 0.)
+        if not valid:
+            hold_s = min(hold_s,sc['lost_hold_s'])
         if level >= CAUTION:
             self.last_alert_t = t
         departed = visible and d is not None and d > tc['d_exit']
@@ -255,7 +266,7 @@ class AlertProcessor:
         if stop:
             self.last_alert_t = None
         elif level < CAUTION and self.last_alert_t is not None and hold_s > 0:
-            covered = (not visible and f.get('hand_ok') and
+            covered = (valid and not visible and f.get('hand_ok') and
                        ((not _isnan(f.get('d_last_mouth')) and f['d_last_mouth'] <= tc['d_exit']) or
                         (f.get('face_ok') and not _isnan(f.get(f'd_{self.norm}'))
                          and f[f'd_{self.norm}'] <= tc['d_exit'])))
@@ -303,5 +314,10 @@ class AlertProcessor:
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
                 "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
                 'obj_conf': class_conf,
+                'image_observation':image_quality, 'image_observation_reasons':image_reasons,
+                'validation_status':'validated' if f.get('calibrated',False) else 'unvalidated',
+                'object_scope':'complete' if f.get('object_coverage',False) else 'limited',
+                'hazard_status':hazard.status, 'hazard_type':hazard.kind,
+                'hazard_policy_version':hazard.policy_version if modern else 'legacy-dataset-v1',
                 'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
                 'green': level == NORMAL and quality == 'observable'}

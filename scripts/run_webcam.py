@@ -21,6 +21,7 @@ from childsafe.alerts.processor import LEVEL_NAMES, Components
 from childsafe.config import FULL_DATASET_CHECKPOINT, load_config
 from childsafe.pipeline import FramePipeline
 from childsafe.runtime.source import VideoSource
+from childsafe.runtime import configure_runtime
 
 COLORS = {0: (60, 180, 60), 1: (0, 190, 255), 2: (0, 0, 255)}   # BGR
 
@@ -72,6 +73,7 @@ def main():
     args = ap.parse_args()
 
     cfg = load_config(args.config)
+    configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True
     rc = cfg["runtime"]
@@ -131,8 +133,11 @@ def main():
             t = packet.received_t-t0
             age = max(0.,now-packet.received_t)
             lm, row, out = pipe.process(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB), t,
-                                        received_t=packet.received_t,frame_age_s=age)
+                                        received_t=packet.received_t,frame_age_s=age,
+                                        processing_deadline=packet.received_t+rc['stale_frame_s'])
             logger.update(out)
+            for row in out['feature_rows']:
+                row['capture_slot_overwrites'] = cap.slot.overwrites
             if args.log_features:
                 feats.extend({**f, 'condition': args.condition} for f in out['feature_rows'])
             now = time.perf_counter()

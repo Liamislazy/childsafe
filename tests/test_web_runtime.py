@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
-from fastapi.testclient import TestClient
+from browser_client import CameraClient as TestClient
 
 from childsafe.config import load_config
 from childsafe.pipeline import FramePipeline
@@ -57,6 +57,7 @@ def image():
 def test_web_runtime_delivers_danger_mask_person_and_notification(monkeypatch):
     now = [0.]
     monkeypatch.setattr('childsafe.web.app.time',SimpleNamespace(perf_counter=lambda:now[0]))
+    monkeypatch.setattr('childsafe.pipeline.time',SimpleNamespace(perf_counter=lambda:now[0]))
     demo = runtime('unsafe'); client = TestClient(create_app(demo))
     try:
         states = []
@@ -84,6 +85,7 @@ def test_web_runtime_delivers_danger_mask_person_and_notification(monkeypatch):
 def test_web_runtime_warns_for_unknown_and_hand_without_mask(monkeypatch):
     now = [0.]
     monkeypatch.setattr('childsafe.web.app.time',SimpleNamespace(perf_counter=lambda:now[0]))
+    monkeypatch.setattr('childsafe.pipeline.time',SimpleNamespace(perf_counter=lambda:now[0]))
     for kind in ['other','hand_only','empty']:
         demo = runtime(kind); client = TestClient(create_app(demo))
         try:

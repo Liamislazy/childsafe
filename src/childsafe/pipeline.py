@@ -10,24 +10,13 @@ import numpy as np
 
 from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
-from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou, resolve_hands
+from childsafe.vision.tracking import PersonTracker, associate_object, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
+from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object
+from childsafe.vision.people import detect_person
+from childsafe.runtime.contracts import PersonState
 
 OBJ_COLUMNS = ['p_unsafe_raw','p_unsafe_cal','obj_class','obj_conf','p_unknown_cal']
-
-
-def _same_object(prev_box, prev_label, obj):
-    """Same held object as last frame? Thin objects moving toward the mouth easily drop below
-    IoU 0.2 between frames, which used to reset all alert history mid-approach. Also accept the same
-    label whose centre moved less than the previous box's larger side."""
-    if iou(prev_box, obj.box) >= .2:
-        return True
-    if prev_label != obj.label:
-        return False
-    pc = ((prev_box[0]+prev_box[2])/2, (prev_box[1]+prev_box[3])/2)
-    oc = ((obj.box[0]+obj.box[2])/2, (obj.box[1]+obj.box[3])/2)
-    size = max(prev_box[2]-prev_box[0], prev_box[3]-prev_box[1])
-    return math.hypot(pc[0]-oc[0], pc[1]-oc[1]) <= size
 
 
 @dataclass
@@ -41,11 +30,17 @@ class FramePipeline:
     def __init__(self, cfg, ckpt, components=None, classify_all=False, classify_input='hand_crop',
                  detector=None, landmark_factory=None, classifier=None):
         self.cfg, self.components = cfg, components
+        from childsafe.evaluation.sessions import config_hash,file_hash,code_hash
+        from pathlib import Path
+        weights = cfg.get('detector',{}).get('weights','')
+        self.provenance = dict(config_sha256=config_hash(cfg),code_sha256=code_hash(),
+                               classifier_sha256=file_hash(ckpt) if ckpt and Path(ckpt).is_file() else None,
+                               detector_sha256=file_hash(weights) if weights and Path(weights).is_file() else None)
         dc = cfg.get('detector', {})
         self.detector = detector if detector is not None else SegmentationDetector(
             dc.get('weights', 'models/yolo11n-seg.pt'), dc.get('min_conf', .5),
             object_confidence=dc.get('object_min_conf'), device=dc.get('device', 'auto'),
-            imgsz=dc.get('imgsz', 640))
+            imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
         if landmark_factory is None:
             def landmark_factory():
                 from childsafe.vision.landmarks import LandmarkDetector
@@ -63,18 +58,26 @@ class FramePipeline:
         self.tracker = PersonTracker(max_people=cfg.get('runtime', {}).get('max_people', 4),
                                      hold_s=cfg.get('runtime', {}).get('identity_hold_s', 3.),
                                      primary_only=cfg.get('runtime', {}).get('primary_person_only', False))
-        self.states, self.session_id = {}, 0
+        self.states: dict[int,PersonState] = {}
+        self.session_id = 0
         # Creating a MediaPipe face+hand landmarker costs ~0.4 s. Ambiguous (overlapping) people get a
         # new temporary ID on every frame, so creating one per ID stalled the loop to >1 s per frame
         # and the 0.25 s continuity rule then reset all alert history. Instances are pooled instead:
         # only people tracked in this frame hold one, and released instances are reused.
         self._landmark_pool = []
 
-    def _new_state(self):
+    def _new_state(self) -> PersonState:
         from childsafe.vision.geometry import GeometryExtractor
         return dict(processor=AlertProcessor(self.cfg, self.components), geometry=GeometryExtractor(),
-                    landmarks=None, landmark_failed=False, error='', features={}, object_box=None,
-                    quality=ElevatedQuality(self.cfg.get('quality', {})))
+                    landmarks=None, landmark_failed=False, error='', classifier_error='', features={}, object_box=None,
+                    quality=ElevatedQuality(self.cfg.get('quality', {})),
+                    mask_evidence=MaskEvidence(self.cfg.get('quality',{}),self.cfg['temporal']['max_gap_s']))
+
+    @staticmethod
+    def _clear_classification(state):
+        for cache in ('classified', 'classified_hand', 'obj_result'):
+            state.pop(cache, None)
+        state['processor'].obj = None
 
     def _acquire_landmarks(self, state):
         if state['landmarks'] is not None or state['landmark_failed']:
@@ -89,12 +92,12 @@ class FramePipeline:
         lm, state['landmarks'] = state['landmarks'], None
         if lm is None:
             return
-        if len(self._landmark_pool) <= self.tracker.max_people:
+        if len(self._landmark_pool) < self.tracker.max_people:
             self._landmark_pool.append(lm)
         else:
             lm.close()
 
-    def _zoom_detect(self, rgb, scene, active, ambiguous):
+    def _zoom_detect(self, rgb, scene, active, ambiguous, deadline=None):
         """Second detector pass on a crop around each person's hands and mouth. The full frame is
         resized to imgsz (640), so a small or distant held object is only a few pixels wide; in the
         crop it is several times larger. Objects found there are mapped back to full-frame
@@ -105,10 +108,39 @@ class FramePipeline:
             return 0
         h, w = rgb.shape[:2]
         found = 0
-        for track in active:
+        budget=dc.get('roi_budget_per_frame',self.tracker.max_people)
+        if not isinstance(budget,int) or isinstance(budget,bool) or budget<0:
+            raise ValueError('roi_budget_per_frame must be a nonnegative integer')
+        cursor=getattr(self,'_roi_cursor',0)%max(len(active),1)
+        ordered=active[cursor:]+active[:cursor]
+        self._roi_cursor=(cursor+1)%max(len(active),1)
+        for track in ordered:
+            if self.roi_passes>=budget or (deadline is not None and time.perf_counter()>=deadline):
+                break
             lm = scene.people.get(track.person_id)
             if track.person_id in ambiguous or lm is None or not lm.hands:
                 continue
+            # A full-frame mask already resolves the held object: do not repeat
+            # segmentation just to obtain a second view of the same visible pixels.
+            if dc.get('roi_skip_resolved', True):
+                resolved = False
+                for detection in scene.objects:
+                    if detection.mask is None or detection.confidence < self.cfg.get('quality', {}).get('min_mask_conf', .6):
+                        continue
+                    owner, unclear = associate_object(detection, active, scene.people,
+                        max_distance_ratio=self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
+                    if owner == track.person_id and not unclear:
+                        if lm.face is None:
+                            continue
+                        from childsafe.vision.geometry import face_measures
+                        features = dict(face_width=face_measures(lm.face)['face_width'], hand_ok=True,
+                                        mouth_visible=True, association_ambiguous=False, quality_reasons=[])
+                        proximity = object_proximity(detection, lm, features, self.cfg.get('quality', {}))
+                        if proximity['proximity_evidence'] and proximity['object_d_relative'] < self.cfg['temporal']['d_exit']:
+                            resolved = True
+                            break
+                if resolved:
+                    continue
             pts = [hd[:, :2] for hd in lm.hands]
             if lm.face is not None:
                 pts.append(lm.face[[13, 14, 78, 308], :2])
@@ -121,7 +153,8 @@ class FramePipeline:
             cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
             bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
             bx1, by1 = int(bx0 + side), int(by0 + side)
-            for d in self.detector.detect(np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
+            self.roi_passes+=1
+            for d in self._timed('detector_s',self.detector.detect,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
                 if d.label == 'person':
                     continue
                 box = (d.box[0] + bx0, d.box[1] + by0, d.box[2] + bx0, d.box[3] + by0)
@@ -147,9 +180,8 @@ class FramePipeline:
     def _hand_crop_fallback(self, state, rgb, f, t):
         """YOLO (COCO classes) often misses the small object held at the mouth, and then nothing
         was classified at all. As in the original Module B design, classify the area around the hand
-        instead. A confident unsafe result (>= rules.hand_crop_min_p_unsafe, stricter than the mask
-        path) counts as proximity evidence measured by the hand-to-mouth distance; anything else
-        stays at CAUTION through the normal rules."""
+        instead. Classification describes the crop; without a localized reliable
+        object mask this is suspicion only, never confirmed proximity evidence."""
         rc = self.cfg.get('rules', {})
         if (not rc.get('hand_crop_fallback', False) or self.classifier is None
                 or not f.get('mouth_visible') or not f.get('detector_ok', True)):
@@ -164,17 +196,18 @@ class FramePipeline:
             result = last[1]
         else:
             try:
-                result = self.classifier(rgb, box)
+                result = self._timed('classifier_s',self.classifier,rgb,box)
                 self.classifier_error = ''
+                state['classifier_error'] = ''
             except Exception as exc:
                 self.classifier_error = type(exc).__name__
+                state['classifier_error'] = self.classifier_error
+                self._clear_classification(state)
                 return None
             state['classified_hand'] = (t, result)
         if not result:
             return None
-        f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop', distance_source='hand')
-        if self._confident_unsafe(result):
-            f.update(proximity_evidence=True, object_d_relative=f['d_face_width'])
+        f.update(evidence_source='hand_crop',classification_source='hand_crop',distance_source='hand')
         return result
 
     def reset(self, session_id=None):
@@ -184,12 +217,30 @@ class FramePipeline:
         self.tracker.reset()
         self.session_id = self.session_id + 1 if session_id is None else session_id
 
-    def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True):
+    def _timed(self, stage, function, *args, **kwargs):
+        if stage=='detector_s':
+            self.detector_calls=getattr(self,'detector_calls',0)+1
         start = time.perf_counter()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            if not hasattr(self,'timings'):
+                self.timings = {}
+            self.timings[stage] = self.timings.get(stage,0.) + time.perf_counter()-start
+
+    def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True,
+                processing_deadline=None):
+        start = time.perf_counter()
+        self.timings = {}
+        self.detector_calls,self.roi_passes=0,0
+        import copy
+        prior_processors = ({pid:copy.deepcopy(state['processor']) for pid,state in self.states.items()}
+                            if processing_deadline is not None else {})
         h, w = rgb.shape[:2]
         valid = frame_valid and frame_age_s <= self.cfg.get('runtime', {}).get('stale_frame_s', .25)
+        valid = valid and (processing_deadline is None or start <= processing_deadline)
         scene = SceneLandmarks()
-        detections = self.detector.detect(rgb) if valid and source_ok else []
+        detections = self._timed('detector_s',self.detector.detect,rgb) if valid and source_ok else []
         active, retired = self.tracker.update(detections, t) if valid and source_ok else ([], set())
         active_now = {track.person_id for track in active}
         for pid, state in self.states.items():   # release first, so new IDs reuse these instances
@@ -200,44 +251,23 @@ class FramePipeline:
             if pid not in self.states:
                 self.states[pid] = self._new_state()
             state = self.states[pid]
-            self._acquire_landmarks(state)
+            if track.history_reset:
+                state['processor'].reset()
+                self._clear_classification(state)
+                state['geometry'].__init__()
+                state['quality'] = ElevatedQuality(self.cfg.get('quality', {}))
+                state['mask_evidence'].reset()
+                state['object_box'] = None
+            if processing_deadline is None or time.perf_counter()<processing_deadline:
+                self._acquire_landmarks(state)
             box = tuple(int(v) for v in track.box)
             box = (max(0,box[0]), max(0,box[1]), min(w,box[2]), min(h,box[3]))
             scene.boxes[pid] = box
-            if state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]:
+            if (state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]
+                    and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 try:
-                    # Tight body crops can prevent palm detection for a gripping hand.
-                    # For a lone person retain the original camera framing, then check
-                    # ownership. Multiple people retain separate body crops.
-                    # A person far from the camera (small box) is cropped with a margin and
-                    # enlarged before MediaPipe: its face/palm detectors shrink the input to
-                    # ~128-256 px, so a 30 px face in the full frame is nearly invisible to them.
-                    lc = self.cfg.get('landmarks', {})
-                    bw, bh = box[2]-box[0], box[3]-box[1]
-                    far = lc.get('zoom', True) and bh < lc.get('zoom_below_frac', .6) * h
-                    if len(active) == 1 and not track.ambiguous and not far:
-                        crop = (0, 0, w, h)
-                    elif far:
-                        mx, my = int(bw * .15), int(bh * .1)   # margin: hands reaching out of the box
-                        crop = (max(0, box[0]-mx), max(0, box[1]-my), min(w, box[2]+mx), min(h, box[3]+my))
-                    else:
-                        crop = box
-                    image = rgb[crop[1]:crop[3],crop[0]:crop[2]]
-                    scale = 1.
-                    longest = max(image.shape[:2])
-                    if far and 0 < longest < lc.get('zoom_target_px', 640):
-                        scale = min(lc.get('zoom_target_px', 640) / longest, lc.get('zoom_max_scale', 3.))
-                        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
-                    lm = state['landmarks'].detect(np.ascontiguousarray(image), t)
-                    lm = to_original(lm, crop, w, h, scale)
-                    inside = lambda points: (box[0] <= points[:,0].mean() <= box[2] and
-                                             box[1] <= points[:,1].mean() <= box[3])
-                    if lm.face is not None and not inside(lm.face):
-                        lm.face = None
-                    owned = [i for i, hand in enumerate(lm.hands) if inside(hand)]
-                    lm.hands = [lm.hands[i] for i in owned]
-                    if hasattr(lm, 'handedness'):
-                        lm.handedness = [lm.handedness[i] for i in owned if i < len(lm.handedness)]
+                    lm = self._timed('landmarks_s',detect_person,state['landmarks'],rgb,box,t,
+                                     self.cfg.get('landmarks',{}),len(active)==1 and not track.ambiguous)
                     scene.people[pid] = lm
                     state['error'] = ''
                 except Exception as exc:
@@ -246,16 +276,12 @@ class FramePipeline:
         # Whose hand is whose: duplicates across crops go to the person whose mouth they are
         # clearly closer to; only truly unclear hands make people ambiguous (see resolve_hands).
         ambiguous |= resolve_hands(scene.people, scene.boxes)
-        assigned = {p.person_id: [] for p in active}
         scene.objects = [d for d in detections if d.label != 'person']
-        roi_found = self._zoom_detect(rgb, scene, active, ambiguous) if valid and source_ok else 0
-        for obj in scene.objects:
-            owner, unclear = associate_object(obj, active, scene.people,
-                                             self.cfg.get('quality', {}).get('max_hand_object_px', 80))
-            if owner is not None:
-                assigned[owner].append(obj)
-            elif unclear:
-                ambiguous.update(assigned)
+        roi_found = self._zoom_detect(rgb, scene, active, ambiguous,processing_deadline) if valid and source_ok else 0
+        assignments=assign_objects(scene.objects,active,scene.people,
+                                   self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
+        assigned=assignments.owned
+        ambiguous.update(assignments.ambiguous)
         outputs, rows = [], []
         active_ids = {p.person_id for p in active}
         for track in active:
@@ -263,9 +289,10 @@ class FramePipeline:
             lm = scene.people.get(pid)
             f = state['geometry'](lm) if lm is not None else dict(t=t, face_ok=0, hand_ok=0)
             f.update(schema_version=2, person_id=pid, session_id=self.session_id,
+                     history_reset=track.history_reset,
                      source_ok=source_ok, frame_valid=valid, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s, detector_ok=self.detector.ok,
-                     classifier_ok=self.classifier is not None and not self.classifier_error,
+                     classifier_ok=self.classifier is not None and not state['classifier_error'],
                      mouth_visible=lm is not None and lm.face is not None,
                      association_ambiguous=pid in ambiguous, calibrated=self.cfg.get('quality', {}).get('calibrated', False),
                      object_coverage=self.cfg.get('detector', {}).get('complete_object_coverage', False),
@@ -278,8 +305,8 @@ class FramePipeline:
                      scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
                      assigned_objects=len(assigned[pid]))
             obj_result = None
-            crop_box = scene.boxes[pid]
-            f.update(state['quality'].measure(rgb[crop_box[1]:crop_box[3],crop_box[0]:crop_box[2]],lm,f))
+            # Landmarks are in original coordinates; quality crops must use that same image.
+            f.update(self._timed('quality_s',state['quality'].measure,rgb,lm,f))
             if state['error']:
                 f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
@@ -293,7 +320,9 @@ class FramePipeline:
                              if math.isfinite(item[0]['candidate_object_d_relative']) else math.inf)
                 if state['object_box'] is not None and not _same_object(state['object_box'], state.get('object_label'), obj):
                     state['processor'].reset()
+                    self._clear_classification(state)
                     f['history_reset'] = True
+                    state['mask_evidence'].reset()
                 state['object_box'], state['object_label'] = obj.box, obj.label
                 last = state.get('classified')
                 recent = (last is not None and not f.get('history_reset') and
@@ -301,25 +330,39 @@ class FramePipeline:
                           0 <= t-last[0] < self.cfg.get('cascade', {}).get('classify_interval_s', .1) and
                           iou(last[1], obj.box) >= .5)
                 # Same object classified moments ago: the processor keeps that result (valid 1 s).
-                if self.classifier is not None and pid not in ambiguous and not recent:
+                if (self.classifier is not None and pid not in ambiguous and not recent
+                        and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                     try:
                         box = tuple(int(v) for v in obj.box)
                         box = (max(0,box[0]),max(0,box[1]),min(w,box[2]),min(h,box[3]))
                         if box[2]-box[0] > 8 and box[3]-box[1] > 8:
-                            obj_result = self.classifier(rgb, box)
+                            obj_result = self._timed('classifier_s',self.classifier,rgb,box)
                             state['classified'] = (t, obj.box)
+                        else:
+                            self._clear_classification(state)
+                            f['quality_reasons'].append('object crop too small for classification')
                         self.classifier_error = ''
+                        state['classifier_error'] = ''
                     except Exception as exc:
                         self.classifier_error = type(exc).__name__
+                        state['classifier_error'] = self.classifier_error
+                        self._clear_classification(state)
                         f['classifier_ok'] = False
             else:
                 state['object_box'] = None
                 state['processor'].obj = None
+                state.pop('classified', None)
+                state.pop('obj_result', None)
             if pid in ambiguous:
                 f['history_reset'] = True
                 state['processor'].reset()
+                self._clear_classification(state)
                 state['geometry'].__init__()
-            f.update(proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{})))
+                state['mask_evidence'].reset()
+            raw_proximity=proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{}))
+            f.update(state['mask_evidence'].apply(obj,t,raw_proximity))
+            if f['mask_reliable'] and not f['mask_temporally_stable']:
+                f['quality_reasons'].append('object mask not temporally stable')
             f['object_present'] = obj is not None
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
             d_object = (f['object_d_relative'] if f.get('proximity_evidence')
@@ -327,30 +370,30 @@ class FramePipeline:
             hand_distance = f.get('d_face_width',math.nan)
             d_exit = self.cfg['temporal']['d_exit']
             suspicious_hand = math.isfinite(hand_distance) and hand_distance <= d_exit
-            if obj is None and suspicious_hand and pid not in ambiguous:
+            if (obj is None and suspicious_hand and pid not in ambiguous
+                    and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 hand_result = self._hand_crop_fallback(state, rgb, f, t)
                 if hand_result is not None:
                     obj_result = hand_result
-            # Both distances (hand->mouth and object->mouth): each alone misses cases (object hidden
-            # in the hand / object tip far from the fingers), so the closer one counts. A YOLO object
-            # whose classification is confidently unsafe is confirmed evidence when either distance
-            # is near, like the hand-area check; otherwise the confident-mask rule applies as before.
+            # Keep both distances for diagnostics/suspicion. Only a reliable visible
+            # object mask can establish proximity evidence; classification is contextual.
             if obj is not None and obj_result is not None:
                 state['obj_result'] = (t, obj_result)
-            recent = state.get('obj_result') if obj is not None else None
-            cls = obj_result if obj is not None and obj_result is not None else (
-                recent[1] if recent is not None and 0 <= t-recent[0] <= 1. else None)
-            near_values = [v for v in (d_object, hand_distance) if math.isfinite(v)]
-            d_near = min(near_values) if near_values else math.nan
-            if (not f.get('proximity_evidence') and obj is not None and cls and self._confident_unsafe(cls)
-                    and f.get('mouth_visible') and pid not in ambiguous and math.isfinite(d_near) and d_near <= d_exit):
-                f.update(proximity_evidence=True, object_d_relative=d_near, evidence_source='classifier')
+            # Classification cannot upgrade a weak mask/box or hand position to contact evidence.
             f['d_object'], f['d_hand'] = d_object, hand_distance
             f['distance_source'] = ('object' if math.isfinite(d_object) and
                                     (not math.isfinite(hand_distance) or d_object <= hand_distance) else 'hand')
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
+            f['classifier_ok'] = self.classifier is not None and not state['classifier_error']
+            if processing_deadline is not None and time.perf_counter() > processing_deadline:
+                f.update(frame_valid=False, mouth_visible=False, proximity_evidence=False)
+                f['quality_reasons'].append('frame expired during inference')
+                obj_result = None
+                self._clear_classification(state)
+                state['mask_evidence'].reset()
             out = state['processor'].step(f, obj_result)
+            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)
@@ -371,7 +414,7 @@ class FramePipeline:
             f['tracked'] = False   # held ID, not detected in this frame
             f.update(proximity_evidence=False,mask_reliable=False,object_d_relative=math.nan,
                      object_d_px=math.nan,detector_ok=self.detector.ok,
-                     classifier_ok=self.classifier is not None and not self.classifier_error)
+                     classifier_ok=self.classifier is not None and not state['classifier_error'])
             for column in OBJ_COLUMNS:
                 f[column] = '' if column == 'obj_class' else math.nan
             out = state['processor'].step(f)
@@ -384,8 +427,35 @@ class FramePipeline:
                 self._release_landmarks(state)
                 del self.states[pid]
         inference_s = time.perf_counter()-start
+        from childsafe.runtime.resources import peak_memory_bytes
+        memory = peak_memory_bytes()
+        if self.classifier is not None:
+            self.classifier_error = next((state['classifier_error'] for state in self.states.values()
+                                          if state['classifier_error']), '')
         for f in rows:
             f['inference_s'] = inference_s
+            f.update({name:self.timings.get(name,0.) for name in ('detector_s','landmarks_s','classifier_s','quality_s')})
+            f['other_s'] = max(0.,inference_s-sum(self.timings.values()))
+            f['peak_process_memory_bytes'] = memory
+        # A later person's work may expire the whole shared source sample.
+        if processing_deadline is not None and time.perf_counter() > processing_deadline:
+            outputs = []
+            for f in rows:
+                f.update(frame_valid=False,mouth_visible=False,face_ok=False,hand_ok=False,
+                         proximity_evidence=False,history_reset=False,d_last_mouth=math.nan)
+                f.setdefault('quality_reasons',[]).append('frame expired during inference')
+                state = self.states.get(f['person_id'])
+                if state is not None:
+                    if f['person_id'] in prior_processors:
+                        state['processor'] = prior_processors[f['person_id']]
+                    else:
+                        state['processor'].reset()
+                    self._clear_classification(state)
+                    state['mask_evidence'].reset()
+                    result = state['processor'].step(f)
+                    result.update(person_id=f['person_id'],session_id=self.session_id,
+                                  visible=False,box=state.get('box'))
+                    outputs.append(result)
         level = max((o['level'] for o in outputs), default=0)
         quality = 'unobservable' if not outputs else (
             'unobservable' if any(o['observation'] == 'unobservable' for o in outputs) else
@@ -405,6 +475,12 @@ class FramePipeline:
                      frame_age_s=frame_age_s,inference_s=inference_s,
                      received_t=received_t if received_t is not None else t)
             rows.append(f)
+            f.update({name:self.timings.get(name,0.) for name in ('detector_s','landmarks_s','classifier_s','quality_s')})
+            f['other_s'] = max(0.,inference_s-sum(self.timings.values()))
+            f['peak_process_memory_bytes'] = memory
+        for f in rows:
+            f.update(self.provenance)
+            f.update(detector_calls=self.detector_calls,roi_detector_calls=self.roi_passes)
         return scene, rows[0] if rows else {}, aggregate
 
     def close(self):

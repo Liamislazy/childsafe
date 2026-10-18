@@ -6,11 +6,11 @@ Full context: docs/handoff.md (read it first). Key rules:
 - Never invent numbers, DOIs, authors or links. Tag unverified items. Keep results honest: a lower score after fixing a flaw (e.g. leakage) is a finding.
 - Scoped-down plan only (handoff section 3/6). No VLM, depth camera, SAHI unless asked.
 - Never collect or process video of real children (docs/ethics.md). No video written to disk by the app.
-- Never tune thresholds on the test split; use `evaluate_alerts.py grid --split dev`.
+- Never tune thresholds on the test split; use `evaluate_alerts.py grid --sessions outputs/scenarios --split dev` and the shared explicit-exposure metrics. `--legacy-metrics` is for historical reports only.
 
-Environment: Windows, Python 3.12 venv in `.venv` (MediaPipe has no 3.14 wheels), RTX 3050 4 GB, CUDA torch.
+Environment: Windows, Python 3.12 venv in `.venv`. Last verified 18/10/2026: torch 2.6.0+cpu; GPU runtime has not been validated in this environment.
 Run tests: `.venv\Scripts\python -m pytest -q`. MediaPipe >= 0.10.2x has no `mp.solutions`; we use the Tasks API with
-`.task` files in `models/` (scripts/download_mediapipe_models.py).
+`.task` files in `models/` (scripts/download_mediapipe_models.py). Pooled per-person tasks use stateless IMAGE mode so hidden VIDEO tracker history cannot transfer between people. See docs/product_runtime_guide.md and docs/review_changes_2026_10_18.md for the current scope and unverified real-camera metrics.
 
 ChildSUn facts (checked 2026-10-01, data in data/raw/childsun):
 - Flat folder, 5,353 images 224x224, class = filename prefix (typos: `seissor`, `socket` + `sockets` sets). License on Kaggle: "unknown".

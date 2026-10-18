@@ -7,6 +7,7 @@ written to disk. Run with scripts/web_demo.py.
 from __future__ import annotations
 
 import base64
+import asyncio
 import io
 import math
 import threading
@@ -16,7 +17,8 @@ from pathlib import Path
 import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
-from PIL import Image
+from PIL import Image,UnidentifiedImageError
+from starlette.concurrency import run_in_threadpool
 
 from childsafe.alerts.processor import LEVEL_NAMES, AlertProcessor
 from childsafe.data.corruptions import KINDS, corrupt
@@ -26,6 +28,9 @@ from childsafe.vision.object_classifier import ObjectClassifier, hand_crop_box
 from childsafe.vision.elevated import ElevatedQuality
 from childsafe.pipeline import FramePipeline
 from childsafe.vision.tracking import iou
+from childsafe.runtime.browser import BrowserLease, FrameRejected, SessionEpoch
+from childsafe.web.labels import reason_vi
+from childsafe.evaluation.sessions import file_hash,config_hash,code_hash
 
 STATIC = Path(__file__).parent / "static"
 
@@ -43,7 +48,10 @@ def _thumb(rgb: np.ndarray, size: int = 160) -> str:
 
 
 def _decode(body: bytes) -> np.ndarray:
-    return np.asarray(Image.open(io.BytesIO(body)).convert("RGB"))
+    with Image.open(io.BytesIO(body)) as image:
+        if image.width*image.height > 12_000_000:
+            raise ValueError('decoded image exceeds pixel limit')
+        return np.asarray(image.convert("RGB"))
 
 
 def _displayed_people(persons):
@@ -147,14 +155,19 @@ class RuntimeDemo(Demo):
         self.paths = {self.live_name: models[self.live_name]}
         self.classifiers = {self.live_name: ObjectClassifier(self.paths[self.live_name])}
         self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
+        self.provenance = {'config_sha256':config_hash(cfg),'code_sha256':code_hash(),'classifier_sha256':file_hash(models[self.live_name]),
+                           'detector_sha256':file_hash(cfg['detector']['weights']) if Path(cfg['detector']['weights']).is_file() else None}
+        self.pipeline.provenance = self.provenance
         self.t0 = time.perf_counter()
         self.rows = []
+        self.annotations, self.open_annotation = [], None
         self.recording_full = False
         self.prev_frame_t = None
 
     def reset(self):
         self.pipeline.reset()
         self.rows = []
+        self.annotations, self.open_annotation = [], None
         self.recording_full = False
         self.prev_frame_t = None
         self.slots = {}
@@ -182,86 +195,167 @@ class RuntimeDemo(Demo):
     def close(self):
         self.pipeline.close()
 
-    def frame(self, body, kind, severity, mode):
+    def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.,
+              sequence=None,capture_t=None,clock_uncertainty_s=None,session_epoch=None):
+        decode_start=time.perf_counter()
         rgb = _decode(body)
+        decode_s=time.perf_counter()-decode_start
         if kind in KINDS and severity > 0:
             rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
         with self.lock:
+            if session_epoch is not None:
+                with session_epoch.publication():
+                    pass  # reject cancelled/expired work before touching the pipeline
             t = time.perf_counter()-self.t0
             # Real spacing between frames (server work + browser round trip). This, not server time
             # alone, is what the alert processor compares with temporal.max_gap_s.
             prev = getattr(self, 'prev_frame_t', None)
             frame_gap = t-prev if prev is not None else 0.
-            self.prev_frame_t = t
-            scene, _, out = self.pipeline.process(rgb, t)
-            if not self.recording_full:
-                if len(self.rows)+len(out['feature_rows']) <= 100000:
-                    self.rows.extend(dict(row) for row in out['feature_rows'])
-                else:
-                    self.recording_full = True
-            people = []
-            shown = _displayed_people(out['persons'])
-            slots = self._slot([p['person_id'] for p in shown])
-            for person in shown:
-                pid = person['person_id']
-                lm = scene.people.get(pid)
-                features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
-                people.append({
-                    'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
-                    'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
-                    'observation': person['observation'], 'green': person['green'],
-                    'reason': person['reason'], 'reasons': person['observation_reasons'],
-                    'face': bool(lm is not None and lm.face is not None),
-                    'mouth_visible': bool(features.get('mouth_visible')),
-                    'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
-                    'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
-                    # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
-                    # pen, so a pen comes back as 'toothbrush').
-                    'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
-                    'yolo_label': features.get('object_label', ''),
-                    'mask_reliable': bool(features.get('mask_reliable')),
-                    'class': person['obj_class'], 'status': person['obj_status'],
-                    'p_unsafe': _nan_to_none(person['p_unsafe']),
-                    'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
-                    'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
-                    'd_object': _nan_to_none(features.get('d_object', math.nan)),
-                    'near': bool(person['near']),
-                    'dwell': person['dwell'], 'notify': bool(person['notify'])})
-            objects = []
-            for obj in scene.objects:
-                polygon = []
-                if obj.mask is not None:
-                    import cv2
-                    contours, _ = cv2.findContours(obj.mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                    if contours:
-                        contour = max(contours, key=cv2.contourArea)
-                        polygon = cv2.approxPolyDP(contour, .003*cv2.arcLength(contour, True), True)[:,0,:].tolist()
-                objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
-            detector = self.pipeline.detector
-            limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
-            if self.recording_full:
-                limitations.append('Bộ nhớ số liệu đã đầy: tải phiên hiện tại rồi Reset alerts để bắt đầu phiên mới.')
-            if not detector.ok:
-                limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
-            if not people:
-                limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
-            max_gap = self.cfg['temporal'].get('max_gap_s',.25)
-            if frame_gap > max_gap or out['inference_s'] > max_gap:
-                limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
-                                   f'vượt {max_gap*1000:.0f} ms: lịch sử cảnh báo bị đặt lại nên DANGER không tích lũy được. '
-                                   'Giảm số người trong khung, đóng ứng dụng nặng, hoặc dùng GPU.')
-            return {'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
-                    'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
-                    'green':out['green'], 'observation':out['observation'],
-                    'reason':out['reason'], 'limitations':limitations,
-                    'notify':any(p['notify'] for p in people),
-                    'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
-                    'ms':round(out['inference_s']*1000,1), 'frame_gap_ms':round(frame_gap*1000,1),
-                    'max_gap_ms':round(max_gap*1000,1), 'live_model':self.live_name}
+            scene, _, out = self.pipeline.process(rgb, t, frame_age_s=frame_age_s,
+                                                 processing_deadline=deadline)
+            out['decode_s']=decode_s
+            if session_epoch is not None:
+                try:
+                    with session_epoch.publication():
+                        return self._publish_frame(rgb,scene,out,t,frame_gap,sequence,capture_t,clock_uncertainty_s)
+                except FrameRejected:
+                    # In-flight model work cannot be interrupted safely. Discard its logical
+                    # state and publish no rows; preserve the exported recording's epoch.
+                    self.pipeline.reset(self.pipeline.session_id)
+                    raise
+            return self._publish_frame(rgb,scene,out,t,frame_gap,sequence,capture_t,clock_uncertainty_s)
+
+    def _publish_frame(self,rgb,scene,out,t,frame_gap,sequence,capture_t,clock_uncertainty_s):
+        self.prev_frame_t = t
+        for row in out['feature_rows']:
+            row.update(browser_sequence=sequence,browser_capture_t=capture_t,
+                       clock_uncertainty_s=clock_uncertainty_s,decode_s=out.get('decode_s',0.),
+                       processed_gap_s=frame_gap)
+        if not self.recording_full:
+            if len(self.rows)+len(out['feature_rows']) <= 100000:
+                self.rows.extend(dict(row) for row in out['feature_rows'])
+            else:
+                self.recording_full = True
+        people = []
+        shown = _displayed_people(out['persons'])
+        slots = self._slot([p['person_id'] for p in shown])
+        for person in shown:
+            pid = person['person_id']
+            lm = scene.people.get(pid)
+            features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
+            people.append({
+                'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
+                'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
+                'observation': person['observation'], 'green': person['green'],
+                'image_observation':person['image_observation'],
+                'validation_status':person['validation_status'], 'object_scope':person['object_scope'],
+                'reason': person['reason'], 'reasons': [reason_vi(r) for r in person['observation_reasons']],
+                'face': bool(lm is not None and lm.face is not None),
+                'mouth_visible': bool(features.get('mouth_visible')),
+                'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
+                'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
+                # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
+                # pen, so a pen comes back as 'toothbrush').
+                'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
+                'yolo_label': features.get('object_label', ''),
+                'mask_reliable': bool(features.get('mask_reliable')),
+                'object_localized':bool(features.get('object_present')),
+                'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
+                'class': person['obj_class'], 'status': person['obj_status'],
+                'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
+                'p_unsafe': _nan_to_none(person['p_unsafe']),
+                'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
+                'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
+                'd_object': _nan_to_none(features.get('d_object', math.nan)),
+                'near': bool(person['near']),
+                'dwell': person['dwell'], 'notify': bool(person['notify'])})
+        objects = []
+        for obj in scene.objects:
+            polygon = []
+            if obj.mask is not None:
+                import cv2
+                contours, _ = cv2.findContours(obj.mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                if contours:
+                    contour = max(contours, key=cv2.contourArea)
+                    polygon = cv2.approxPolyDP(contour, .003*cv2.arcLength(contour, True), True)[:,0,:].tolist()
+            objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
+        detector = self.pipeline.detector
+        limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
+        if self.recording_full:
+            limitations.append('Bộ nhớ số liệu đã đầy: tải phiên hiện tại rồi Reset alerts để bắt đầu phiên mới.')
+        if not detector.ok:
+            limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
+        if not people:
+            limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
+        max_gap = self.cfg['temporal'].get('max_gap_s',.25)
+        if frame_gap > max_gap or out['inference_s'] > max_gap:
+            limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
+                               f'vượt {max_gap*1000:.0f} ms: lịch sử cảnh báo bị đặt lại nên DANGER không tích lũy được. '
+                               'Giảm số người trong khung, đóng ứng dụng nặng, hoặc dùng GPU.')
+        return {'t':t,'runtime_session_id':self.pipeline.session_id,
+                'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
+                'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
+                'green':out['green'], 'observation':out['observation'],
+                'reason':reason_vi(out['reason']), 'limitations':limitations,
+                'notify':any(p['notify'] for p in people),
+                'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
+                'ms':round(out['inference_s']*1000,1), 'frame_gap_ms':round(frame_gap*1000,1),
+                'max_gap_ms':round(max_gap*1000,1), 'live_model':self.live_name}
 
 
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
+    processing = asyncio.Lock()
+    lease = BrowserLease(demo.cfg.get('runtime',{}).get('stale_frame_s',.25), clock=lambda:time.perf_counter())
+    session_epoch = None
+
+    @app.post('/api/camera/start')
+    async def camera_start(client_t: float):
+        nonlocal session_epoch
+        if processing.locked():
+            return JSONResponse({'error':'camera busy'},status_code=503)
+        try:
+            async with processing:
+                result = lease.start(client_t)
+                if session_epoch is not None:
+                    session_epoch.cancel()
+                token = result['token']
+                session_epoch = SessionEpoch(lambda:lease.check(token))
+                await run_in_threadpool(demo.reset)
+                demo.session_start_s=time.perf_counter()-getattr(demo,'t0',time.perf_counter())
+                demo.session_end_s=None
+                result.update(t=demo.session_start_s,runtime_session_id=getattr(getattr(demo,'pipeline',None),'session_id',None))
+            return result
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/sync')
+    async def camera_sync(token: str, client_t: float):
+        try:
+            return lease.sync(token,client_t)
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/end')
+    async def camera_end(token: str):
+        try:
+            lease.check(token)
+            if session_epoch is not None:
+                session_epoch.cancel()
+            lease.end(token)
+            demo.session_end_s=time.perf_counter()-getattr(demo,'t0',time.perf_counter())
+            return {'ok':True}
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.post('/api/camera/renew')
+    async def camera_renew(token: str, client_t: float):
+        if processing.locked():
+            return JSONResponse({'error':'camera busy'},status_code=503)
+        try:
+            return lease.renew(token,client_t)
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
 
     @app.get("/")
     def index():
@@ -271,16 +365,59 @@ def create_app(demo: Demo) -> FastAPI:
     def info():
         return {"models": {n: Path(p).parent.name for n, p in demo.paths.items()}, "corruptions": KINDS,
                 'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
+                'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
+                'provenance':getattr(demo,'provenance',{}),
+                'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
+                'hazard_policy':demo.cfg.get('hazard_policy',{}),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")
-    async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand"):
-        return JSONResponse(demo.frame(await request.body(), kind, severity, mode))
+    async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand",
+                    token: str = '', sequence: int = -1, capture_t: float = float('nan')):
+        # Inference must not block the event loop (/info/reset can remain responsive).
+        # Reject overlap rather than queuing old images behind the current frame.
+        if processing.locked():
+            return JSONResponse({'error': 'frame processing busy; retry with a fresh frame'},
+                                status_code=503, headers={'Retry-After': '1'})
+        async with processing:
+            body = bytearray()
+            async for chunk in request.stream():
+                body.extend(chunk)
+                if len(body) > 8*1024*1024:
+                    return JSONResponse({'error':'frame exceeds 8 MB limit'},status_code=413)
+            body = bytes(body)
+            if not isinstance(demo,RuntimeDemo):
+                return JSONResponse(await run_in_threadpool(demo.frame, body, kind, severity, mode))
+            try:
+                deadline, age = lease.frame(token,sequence,capture_t)
+                result = await run_in_threadpool(demo.frame, body, kind, severity, mode,
+                                                deadline=deadline,frame_age_s=age,sequence=sequence,
+                                                capture_t=capture_t,clock_uncertainty_s=lease.uncertainty,
+                                                session_epoch=session_epoch)
+                lease.check(token)  # Stop/expiry while inference ran discards the reply.
+                result['clock_uncertainty_s'] = lease.uncertainty
+                result['age_scope'] = 'browser snapshot to server; not camera sensor latency'
+                return JSONResponse(result)
+            except FrameRejected as exc:
+                return JSONResponse({'error':str(exc)},status_code=409)
+            except (UnidentifiedImageError,ValueError,OSError):
+                return JSONResponse({'error':'invalid image or image exceeds pixel limit'},status_code=422)
 
     @app.post("/api/reset")
-    def reset():
+    async def reset(token: str = ''):
+        if processing.locked():
+            return JSONResponse({'error':'camera busy; retry reset'},status_code=503)
+        if isinstance(demo,RuntimeDemo):
+            try:
+                lease.check(token)
+                lease.reset_floor = lease.clock()
+            except FrameRejected as exc:
+                return JSONResponse({'error':str(exc)},status_code=409)
         with demo.lock:
             demo.reset()
+            if isinstance(demo,RuntimeDemo):
+                demo.session_start_s=time.perf_counter()-demo.t0
+                demo.session_end_s=None
         return {"ok": True}
 
     @app.get('/api/session.csv')
@@ -289,5 +426,47 @@ def create_app(demo: Demo) -> FastAPI:
             return Response(status_code=404)
         return Response(demo.session_csv(), media_type='text/csv',
                         headers={'Content-Disposition':'attachment; filename="camera_session.csv"'})
+
+    @app.post('/api/annotation')
+    async def annotation(token: str, action: str, label: str='uncertain'):
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        try:
+            lease.check(token)
+            if action not in ('start','end') or label not in ('unsafe_mouthing','non_event','uncertain'):
+                raise FrameRejected('invalid annotation action/label')
+            now=time.perf_counter()-demo.t0
+            if action=='start':
+                if demo.open_annotation is not None:
+                    raise FrameRejected('finish the current annotation first')
+                demo.open_annotation={'start':now,'label':label,'session_id':demo.pipeline.session_id}
+            else:
+                if demo.open_annotation is None:
+                    raise FrameRejected('no open annotation')
+                if len(demo.annotations)>=10000:
+                    raise FrameRejected('annotation capacity reached; export and reset')
+                demo.annotations.append(dict(demo.open_annotation,end=now))
+                demo.open_annotation=None
+            return {'t':now,'action':action,'scope':'observer click received by server; annotation delay not measured'}
+        except FrameRejected as exc:
+            return JSONResponse({'error':str(exc)},status_code=409)
+
+    @app.get('/api/annotations.csv')
+    async def annotations():
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        import pandas as pd
+        return Response(pd.DataFrame(demo.annotations,columns=['start','end','label','session_id']).to_csv(index=False),
+                        media_type='text/csv',headers={'Content-Disposition':'attachment; filename="annotations.csv"'})
+
+    @app.get('/api/session.json')
+    async def session_metadata():
+        if not isinstance(demo,RuntimeDemo):
+            return Response(status_code=404)
+        return {'provenance':getattr(demo,'provenance',{}),'start_s':getattr(demo,'session_start_s',None),
+                'end_s':getattr(demo,'session_end_s',None),'runtime_session_id':demo.pipeline.session_id,
+                'unfinished_annotation':getattr(demo,'open_annotation',None) is not None,
+                'annotation_clock':'observer click arrival on server; human reaction delay not measured',
+                'scope':'numerical metadata only; no sensor capture timestamp or medical diagnosis'}
 
     return app

@@ -70,6 +70,7 @@ def event_metrics(t: np.ndarray, level: np.ndarray, gt: pd.DataFrame, duration: 
 
     lat = np.array(latencies)
     return {
+        "metric_definition":"legacy-tolerant-inferred-exposure-v1",
         "n_gt_events": int(len(pos)), "n_pred_events": len(pred), "detected": detected,
         "event_recall": detected / len(pos) if len(pos) else float("nan"),
         "false_alarms": fa, "false_alarms_per_hour": fa / neg_hours, "false_alarms_by_label": fa_by_label,
