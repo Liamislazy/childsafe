@@ -148,6 +148,16 @@ def object_proximity(detection, lm, f, cfg):
     mask_present = (mask is not None and mask.shape == (lm.height,lm.width) and
                     np.count_nonzero(mask) >= cfg.get('min_mask_px',16)) if lm is not None else False
     mask_ok = mask_present and not from_box and detection.confidence >= cfg.get('min_mask_conf',.6)
+    geometry_ok=False
+    if mask_present and not from_box:
+        ys,xs=np.nonzero(mask)
+        x0,y0,x1,y1=detection.box
+        inside=((xs>=x0-2)&(xs<x1+2)&(ys>=y0-2)&(ys<y1+2)).mean()
+        roi=mask[ys.min():ys.max()+1,xs.min():xs.max()+1].astype(np.uint8)
+        _,_,stats,_=cv2.connectedComponentsWithStats(roi,connectivity=8)
+        dominant=float(stats[1:,cv2.CC_STAT_AREA].max())/len(xs)
+        geometry_ok=(inside>=cfg.get('min_mask_in_box',.8) and dominant>=cfg.get('min_mask_component_fraction',.8))
+    mask_ok=mask_ok and geometry_ok
     observable = (f.get('mouth_visible',False) and f.get('hand_ok',False) and
                   not f.get('association_ambiguous',False) and
                   'hand too small' not in f.get('quality_reasons',[]))
@@ -162,6 +172,7 @@ def object_proximity(detection, lm, f, cfg):
     d_px = measured if trusted else math.nan
     candidate_px = measured if candidate else math.nan
     return dict(mask_reliable=mask_ok, proximity_evidence=bool(trusted), object_d_px=d_px,
+                mask_geometry_ok=geometry_ok,
                 object_d_relative=d_px/max(f.get('face_width',1),1) if trusted else math.nan,
                 candidate_object_d_relative=candidate_px/max(f.get('face_width',1),1) if candidate else math.nan,
                 object_label=detection.label if detection is not None else '',

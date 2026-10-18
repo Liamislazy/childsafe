@@ -12,22 +12,9 @@ from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
+from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object
 
 OBJ_COLUMNS = ['p_unsafe_raw','p_unsafe_cal','obj_class','obj_conf','p_unknown_cal']
-
-
-def _same_object(prev_box, prev_label, obj):
-    """Same held object as last frame? Thin objects moving toward the mouth easily drop below
-    IoU 0.2 between frames, which used to reset all alert history mid-approach. Also accept the same
-    label whose centre moved less than the previous box's larger side."""
-    if prev_label != obj.label:
-        return False
-    if iou(prev_box, obj.box) >= .2:
-        return True
-    pc = ((prev_box[0]+prev_box[2])/2, (prev_box[1]+prev_box[3])/2)
-    oc = ((obj.box[0]+obj.box[2])/2, (obj.box[1]+obj.box[3])/2)
-    size = max(prev_box[2]-prev_box[0], prev_box[3]-prev_box[1])
-    return math.hypot(pc[0]-oc[0], pc[1]-oc[1]) <= size
 
 
 @dataclass
@@ -80,7 +67,8 @@ class FramePipeline:
         from childsafe.vision.geometry import GeometryExtractor
         return dict(processor=AlertProcessor(self.cfg, self.components), geometry=GeometryExtractor(),
                     landmarks=None, landmark_failed=False, error='', classifier_error='', features={}, object_box=None,
-                    quality=ElevatedQuality(self.cfg.get('quality', {})))
+                    quality=ElevatedQuality(self.cfg.get('quality', {})),
+                    mask_evidence=MaskEvidence(self.cfg.get('quality',{}),self.cfg['temporal']['max_gap_s']))
 
     @staticmethod
     def _clear_classification(state):
@@ -129,7 +117,7 @@ class FramePipeline:
                     if detection.mask is None or detection.confidence < self.cfg.get('quality', {}).get('min_mask_conf', .6):
                         continue
                     owner, unclear = associate_object(detection, active, scene.people,
-                                      self.cfg.get('quality', {}).get('max_hand_object_px', 80))
+                        max_distance_ratio=self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
                     if owner == track.person_id and not unclear:
                         if lm.face is None:
                             continue
@@ -207,7 +195,7 @@ class FramePipeline:
             state['classified_hand'] = (t, result)
         if not result:
             return None
-        f.update(object_present=True, object_label='hand crop', evidence_source='hand_crop', distance_source='hand')
+        f.update(evidence_source='hand_crop',classification_source='hand_crop',distance_source='hand')
         return result
 
     def reset(self, session_id=None):
@@ -253,6 +241,7 @@ class FramePipeline:
                 self._clear_classification(state)
                 state['geometry'].__init__()
                 state['quality'] = ElevatedQuality(self.cfg.get('quality', {}))
+                state['mask_evidence'].reset()
                 state['object_box'] = None
             self._acquire_landmarks(state)
             box = tuple(int(v) for v in track.box)
@@ -300,16 +289,12 @@ class FramePipeline:
         # Whose hand is whose: duplicates across crops go to the person whose mouth they are
         # clearly closer to; only truly unclear hands make people ambiguous (see resolve_hands).
         ambiguous |= resolve_hands(scene.people, scene.boxes)
-        assigned = {p.person_id: [] for p in active}
         scene.objects = [d for d in detections if d.label != 'person']
         roi_found = self._zoom_detect(rgb, scene, active, ambiguous) if valid and source_ok else 0
-        for obj in scene.objects:
-            owner, unclear = associate_object(obj, active, scene.people,
-                                             self.cfg.get('quality', {}).get('max_hand_object_px', 80))
-            if owner is not None:
-                assigned[owner].append(obj)
-            elif unclear:
-                ambiguous.update(assigned)
+        assignments=assign_objects(scene.objects,active,scene.people,
+                                   self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
+        assigned=assignments.owned
+        ambiguous.update(assignments.ambiguous)
         outputs, rows = [], []
         active_ids = {p.person_id for p in active}
         for track in active:
@@ -351,6 +336,7 @@ class FramePipeline:
                     state['processor'].reset()
                     self._clear_classification(state)
                     f['history_reset'] = True
+                    state['mask_evidence'].reset()
                 state['object_box'], state['object_label'] = obj.box, obj.label
                 last = state.get('classified')
                 recent = (last is not None and not f.get('history_reset') and
@@ -385,7 +371,11 @@ class FramePipeline:
                 state['processor'].reset()
                 self._clear_classification(state)
                 state['geometry'].__init__()
-            f.update(proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{})))
+                state['mask_evidence'].reset()
+            raw_proximity=proximity if proximity is not None else object_proximity(obj,lm,f,self.cfg.get('quality',{}))
+            f.update(state['mask_evidence'].apply(obj,t,raw_proximity))
+            if f['mask_reliable'] and not f['mask_temporally_stable']:
+                f['quality_reasons'].append('object mask not temporally stable')
             f['object_present'] = obj is not None
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
             d_object = (f['object_d_relative'] if f.get('proximity_evidence')
@@ -401,11 +391,6 @@ class FramePipeline:
             # object mask can establish proximity evidence; classification is contextual.
             if obj is not None and obj_result is not None:
                 state['obj_result'] = (t, obj_result)
-            recent = state.get('obj_result') if obj is not None else None
-            cls = obj_result if obj is not None and obj_result is not None else (
-                recent[1] if recent is not None and 0 <= t-recent[0] <= 1. else None)
-            near_values = [v for v in (d_object, hand_distance) if math.isfinite(v)]
-            d_near = min(near_values) if near_values else math.nan
             # Classification cannot upgrade a weak mask/box or hand position to contact evidence.
             f['d_object'], f['d_hand'] = d_object, hand_distance
             f['distance_source'] = ('object' if math.isfinite(d_object) and
@@ -418,6 +403,7 @@ class FramePipeline:
                 f['quality_reasons'].append('frame expired during inference')
                 obj_result = None
                 self._clear_classification(state)
+                state['mask_evidence'].reset()
             out = state['processor'].step(f, obj_result)
             f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
@@ -477,6 +463,7 @@ class FramePipeline:
                     else:
                         state['processor'].reset()
                     self._clear_classification(state)
+                    state['mask_evidence'].reset()
                     result = state['processor'].step(f)
                     result.update(person_id=f['person_id'],session_id=self.session_id,
                                   visible=False,box=state.get('box'))

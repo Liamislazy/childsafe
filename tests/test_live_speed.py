@@ -263,13 +263,19 @@ def _run_with_object(hand_at, obj_box, conf, use_mask=True, frames=12, result=No
 
 def test_both_distances_are_reported_and_the_closer_one_counts():
     # hand at the mouth, object pointing away: near through the hand
-    person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 110, 140, 150), conf=.45)
+    person, row, levels = _run_with_object(hand_at=(55, 55), obj_box=(100, 85, 140, 150), conf=.45)
     assert row['d_hand'] < .2 and row['d_object'] > .5 and row['distance_source'] == 'hand'
     assert person['near_frame'] and 1 in levels and 2 not in levels
     # hand further away, object tip at the mouth: near through the object
     person, row, levels = _run_with_object(hand_at=(105, 100), obj_box=(60, 50, 110, 105), conf=.45)
     assert row['d_object'] < .1 and row['distance_source'] == 'object' and person['d'] < .1
     assert 1 in levels and 2 not in levels
+
+
+def test_distant_unheld_object_is_not_assigned_by_old_fixed_pixel_radius():
+    person,row,levels=_run_with_object(hand_at=(55,55),obj_box=(100,110,140,150),conf=.45)
+    assert not row['object_present'] and math.isnan(row['d_object'])
+    assert row['distance_source']=='hand' and 1 in levels and 2 not in levels
 
 
 def test_weak_outline_alone_never_confirms_danger():

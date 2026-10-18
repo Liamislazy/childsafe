@@ -200,16 +200,28 @@ def to_original(lm, box, width, height, scale=1.):
     return lm
 
 
-def associate_object(detection, people, landmarks, max_hand_distance=80):
-    """Only one unambiguous person with a nearby hand may own an object."""
+def object_candidates(detection, people, landmarks, max_hand_distance=None, max_distance_ratio=1.5):
+    """Scale-invariant hand-to-box gate; explicit pixel threshold is legacy-only."""
     candidates = []
     for track in people:
         lm = landmarks.get(track.person_id)
         if lm is None or track.ambiguous or not lm.hands:
             continue
         x0, y0, x1, y1 = detection.box
-        distance = min(float(np.linalg.norm(h[:, :2] - np.clip(h[:, :2], [x0,y0], [x1,y1]), axis=1).min())
-                       for h in lm.hands)
-        if distance <= max_hand_distance:
+        close=False
+        for hand in lm.hands:
+            distance=float(np.linalg.norm(hand[:,:2]-np.clip(hand[:,:2],[x0,y0],[x1,y1]),axis=1).min())
+            extent=float(np.ptp(hand[:,:2],axis=0).max())
+            # A degenerate hand fixture uses a body-relative fallback, never a fixed pixel radius.
+            reference=extent if extent>0 else min(track.box[2]-track.box[0],track.box[3]-track.box[1])*.15
+            limit=max_hand_distance if max_hand_distance is not None else max_distance_ratio*reference
+            close |= distance<=limit
+        if close:
             candidates.append(track.person_id)
+    return candidates
+
+
+def associate_object(detection, people, landmarks, max_hand_distance=None, max_distance_ratio=1.5):
+    """Only one unambiguous person with a nearby hand may own an object."""
+    candidates=object_candidates(detection,people,landmarks,max_hand_distance,max_distance_ratio)
     return (candidates[0], False) if len(candidates) == 1 else (None, bool(candidates))

@@ -255,6 +255,8 @@ class RuntimeDemo(Demo):
                 'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
+                'object_localized':bool(features.get('object_present')),
+                'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
                 'class': person['obj_class'], 'status': person['obj_status'],
                 'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
                 'p_unsafe': _nan_to_none(person['p_unsafe']),

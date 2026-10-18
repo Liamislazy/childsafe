@@ -48,3 +48,15 @@ Chất lượng ảnh tốt không tự chứng nhận model hoặc tạo trạn
 
 Kiểm chứng: metric qua cùng dữ liệu dev/report, unknown exposure, không tune test,
 coverage không phụ thuộc cờ hiệu chuẩn, CLI report frozen-config và replay.
+
+## 5. Định vị và gán vật
+
+Khoảng gán tay–vật dùng tỷ lệ kích thước bàn tay, không dùng bán kính 80 pixel cho
+mọi độ phân giải. Vật có nhiều chủ thể ứng viên chỉ hạ chất lượng những người đó.
+Tách module `vision.objects` chứa gán vật và bộ bằng chứng mask theo từng người.
+Mask kiểm tra phần nằm trong box, thành phần liên thông trội và ổn định hình dạng/
+diện tích qua thời gian. Giai đoạn chờ xác nhận vẫn có CAUTION; không tích lũy
+DANGER từ một mask mới hoặc đột biến. Các ngưỡng đều chưa hiệu chuẩn dev thực tế.
+
+Kiểm chứng: cùng cảnh ở bốn tỷ lệ ảnh, người thứ ba độc lập, vật dài, mask ngoài
+box/rời rạc/đột biến, mất mẫu và nhất quán replay. Không suy ra tiếp xúc vật lý từ 2D.

@@ -125,7 +125,7 @@ class AlertProcessor:
         if modern and (not f.get('classifier_ok', False) or not f.get('detector_ok', False)):
             obj = None
             self.obj = None
-        if modern and f.get('object_present') is False:
+        if modern and f.get('object_present') is False and f.get('evidence_source')!='hand_crop':
             obj = None
             self.obj = None
         if obj is not None and not _isnan(obj.get("p_unsafe_cal")):
