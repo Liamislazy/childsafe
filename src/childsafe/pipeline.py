@@ -10,9 +10,11 @@ import numpy as np
 
 from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
-from childsafe.vision.tracking import PersonTracker, associate_object, to_original, iou, resolve_hands
+from childsafe.vision.tracking import PersonTracker, associate_object, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
 from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object
+from childsafe.vision.people import detect_person
+from childsafe.runtime.contracts import PersonState
 
 OBJ_COLUMNS = ['p_unsafe_raw','p_unsafe_cal','obj_class','obj_conf','p_unknown_cal']
 
@@ -56,14 +58,15 @@ class FramePipeline:
         self.tracker = PersonTracker(max_people=cfg.get('runtime', {}).get('max_people', 4),
                                      hold_s=cfg.get('runtime', {}).get('identity_hold_s', 3.),
                                      primary_only=cfg.get('runtime', {}).get('primary_person_only', False))
-        self.states, self.session_id = {}, 0
+        self.states: dict[int,PersonState] = {}
+        self.session_id = 0
         # Creating a MediaPipe face+hand landmarker costs ~0.4 s. Ambiguous (overlapping) people get a
         # new temporary ID on every frame, so creating one per ID stalled the loop to >1 s per frame
         # and the 0.25 s continuity rule then reset all alert history. Instances are pooled instead:
         # only people tracked in this frame hold one, and released instances are reused.
         self._landmark_pool = []
 
-    def _new_state(self):
+    def _new_state(self) -> PersonState:
         from childsafe.vision.geometry import GeometryExtractor
         return dict(processor=AlertProcessor(self.cfg, self.components), geometry=GeometryExtractor(),
                     landmarks=None, landmark_failed=False, error='', classifier_error='', features={}, object_box=None,
@@ -263,38 +266,8 @@ class FramePipeline:
             if (state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]
                     and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 try:
-                    # Tight body crops can prevent palm detection for a gripping hand.
-                    # For a lone person retain the original camera framing, then check
-                    # ownership. Multiple people retain separate body crops.
-                    # A person far from the camera (small box) is cropped with a margin and
-                    # enlarged before MediaPipe: its face/palm detectors shrink the input to
-                    # ~128-256 px, so a 30 px face in the full frame is nearly invisible to them.
-                    lc = self.cfg.get('landmarks', {})
-                    bw, bh = box[2]-box[0], box[3]-box[1]
-                    far = lc.get('zoom', True) and bh < lc.get('zoom_below_frac', .6) * h
-                    if len(active) == 1 and not track.ambiguous and not far:
-                        crop = (0, 0, w, h)
-                    elif far:
-                        mx, my = int(bw * .15), int(bh * .1)   # margin: hands reaching out of the box
-                        crop = (max(0, box[0]-mx), max(0, box[1]-my), min(w, box[2]+mx), min(h, box[3]+my))
-                    else:
-                        crop = box
-                    image = rgb[crop[1]:crop[3],crop[0]:crop[2]]
-                    scale = 1.
-                    longest = max(image.shape[:2])
-                    if far and 0 < longest < lc.get('zoom_target_px', 640):
-                        scale = min(lc.get('zoom_target_px', 640) / longest, lc.get('zoom_max_scale', 3.))
-                        image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
-                    lm = self._timed('landmarks_s',state['landmarks'].detect,np.ascontiguousarray(image),t)
-                    lm = to_original(lm, crop, w, h, scale)
-                    inside = lambda points: (box[0] <= points[:,0].mean() <= box[2] and
-                                             box[1] <= points[:,1].mean() <= box[3])
-                    if lm.face is not None and not inside(lm.face):
-                        lm.face = None
-                    owned = [i for i, hand in enumerate(lm.hands) if inside(hand)]
-                    lm.hands = [lm.hands[i] for i in owned]
-                    if hasattr(lm, 'handedness'):
-                        lm.handedness = [lm.handedness[i] for i in owned if i < len(lm.handedness)]
+                    lm = self._timed('landmarks_s',detect_person,state['landmarks'],rgb,box,t,
+                                     self.cfg.get('landmarks',{}),len(active)==1 and not track.ambiguous)
                     scene.people[pid] = lm
                     state['error'] = ''
                 except Exception as exc:
@@ -332,7 +305,6 @@ class FramePipeline:
                      scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
                      assigned_objects=len(assigned[pid]))
             obj_result = None
-            crop_box = scene.boxes[pid]
             # Landmarks are in original coordinates; quality crops must use that same image.
             f.update(self._timed('quality_s',state['quality'].measure,rgb,lm,f))
             if state['error']:

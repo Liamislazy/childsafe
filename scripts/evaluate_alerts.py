@@ -198,6 +198,8 @@ if __name__ == "__main__":
     import sys
     if '--legacy-metrics' in sys.argv:
         sys.argv.remove('--legacy-metrics')
+        if len(sys.argv)>1 and sys.argv[1]!='report':
+            raise SystemExit('legacy metrics are for historical reports only; use strict dev sessions for threshold exploration')
         print('LEGACY METRICS: inferred negative exposure and tolerant event matching; not comparable to product reports')
         legacy_main()
     else:

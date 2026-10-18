@@ -1,6 +1,7 @@
 """Measure full local camera processing; numerical logs only, no frame recording."""
 import argparse
 import json
+import os
 import time
 from pathlib import Path
 import cv2
@@ -36,7 +37,9 @@ def collect(source,pipe,duration_s,clock=time.perf_counter):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--source',required=True,help='local camera index or video stream URL; never exported')
+    source_args=p.add_mutually_exclusive_group(required=True)
+    source_args.add_argument('--source',type=int,help='local camera index')
+    source_args.add_argument('--source-env',help='environment variable containing the stream URL; never exported')
     p.add_argument('--kind',choices=['adult','doll'],required=True)
     p.add_argument('--consent-confirmed',action='store_true')
     p.add_argument('--condition',required=True)
@@ -47,6 +50,8 @@ def main(argv=None):
     p.add_argument('--cpu-threads',type=int,default=2)
     p.add_argument('--out',type=Path,default=Path('outputs/live_profile'))
     a=p.parse_args(argv)
+    source_value=a.source if a.source is not None else os.environ.get(a.source_env)
+    if source_value is None or source_value=='': p.error('source environment variable is empty')
     if a.kind=='adult' and not a.consent_confirmed: p.error('adult participants must have confirmed consent')
     if a.seconds<=0 or not a.seconds<3601 or min(a.width,a.height)<=0: p.error('invalid duration or dimensions')
     cfg=load_config(a.config)
@@ -55,7 +60,7 @@ def main(argv=None):
     pipe=FramePipeline(cfg,a.ckpt)
     if pipe.classifier is None or not pipe.detector.ok:
         pipe.close(); p.error('local classifier/detector unavailable; no performance certification')
-    source=VideoSource(int(a.source) if a.source.isdigit() else a.source,a.width,a.height)
+    source=VideoSource(source_value,a.width,a.height)
     try:
         source.start(); data,elapsed=collect(source,pipe,a.seconds)
     finally:

@@ -93,3 +93,35 @@ Hướng dẫn `targeted_camera_trials.md` yêu cầu đạo cụ lớn/mềm, k
 ground truth do người quan sát độc lập. Không có dữ liệu camera mới trong đợt này.
 Kiểm chứng: kế hoạch tái lập, finalize/report, phát hiện sửa dữ liệu, marker chưa
 đóng, model khác và frame sau khi kết thúc. Toàn bộ ví dụ kiểm thử là số liệu giả.
+
+## 8. Ranh giới xử lý theo người
+
+Tách crop/chuyển tọa độ/loại mốc ngoài người vào `vision.people`, gán vật/mask vào
+`vision.objects`, chính sách nguy cơ vào `alerts.hazards`, công bố phiên web vào
+hàm riêng và báo cáo/tuning vào module chung. Bổ sung kiểu dữ liệu cho feature và
+trạng thái người; CSV vẫn là record thuần, đọc được dữ liệu lịch sử.
+
+MediaPipe pooled instance dùng IMAGE mode không mang tracker VIDEO nội bộ sang
+ID khác. Bộ lọc/hysteresis của dự án vẫn nằm riêng theo người. IMAGE có thể chậm
+hơn khi tracking VIDEO hoạt động tốt; cần đo lại trên camera thật. Đây là thay đổi
+để tránh lịch sử model ẩn vượt qua việc reset lịch sử logic, không phải tăng FPS.
+
+## Kiểm chứng cuối đợt
+
+- Toàn bộ Python suite: **205 passed, 3 skipped**, 17 deprecation warnings, 24,66 s.
+  Hai notebook Kaggle đã tạo lại từ source/config mới; không chạy train.
+- Test tích hợp trọng số thật trên crop đồ vật đã duyệt: **1 passed** (chạy opt-in
+  riêng). Không có người hoặc video trẻ trong fixture.
+- Edge headless với canvas stream: bật/tắt, marker độc lập và CSV hoạt động; không
+  lỗi JavaScript. Hồi quy phản hồi renew cũ bị giữ lại qua stop/start thành công;
+  phiên mới không bị ghi đè/tắt. Script `tests/browser_session_races.cjs` có thể
+  chạy với Playwright đã cài và server local; không gọi camera/micro thật.
+- `uv pip check`: 79 package hiện có tương thích. Chưa thử cài môi trường sạch/GPU.
+- Smoke IMAGE mode model thật: 8 mẫu sau 2 warmup, cùng ảnh hình học không người,
+  CPU 2 threads. Median/p90 ms: YOLO 194,20/212,47; classifier 66,65/78,52;
+  MediaPipe riêng 37,34/40,83; pipeline không người 188,39/211,22.
+  Artifact `outputs/review_image_mode_smoke_20261018.json`, không commit output.
+
+Những số đo smoke không phải camera FPS với người, recall, FA/giờ hoặc latency
+sự kiện. Dữ liệu thực tế, hiệu chuẩn, khả năng tổng quát sang trẻ và nhận diện
+nghẹn vẫn chưa được kiểm chứng. Không tải dataset lớn hoặc train lại model.

@@ -1,6 +1,6 @@
 # Runtime sản phẩm: chạy, thử và báo cáo
 
-Cập nhật 12/10/2026. Phạm vi: vật nguy hiểm tiến sát vùng miệng trên ảnh, một
+Cập nhật 18/10/2026. Phạm vi: vật nguy hiểm tiến sát vùng miệng trên ảnh, một
 camera, các người có ID tạm thời. Không xác nhận tiếp xúc vật lý, nuốt hay nghẹn.
 Chưa hiệu chuẩn camera thật; bút/đũa/đồng xu chưa có detector riêng. Không tự đổi
 `calibrated`/`complete_object_coverage` để giao diện hiện xanh.
@@ -156,6 +156,8 @@ sự trả độ phân giải yêu cầu hay không (kích thước ảnh gốc 
 thiết bị, cấu hình, timing từng bước và frame vượt ngân sách được lưu trong JSON.
 Không lưu ảnh/video hoặc URL kết nối. Phiên đo hiệu năng này không có nhãn sự kiện;
 không dùng nó để công bố recall/FA. Khi không có frame, thời gian thực vẫn được tính.
+Luồng URL dùng `--source-env TEN_BIEN_MOI_TRUONG`; không dán URL có thông tin kết
+nối vào lệnh, config, condition hoặc Git.
 
 Mặc định chỉ một crop YOLO phụ/frame, luân phiên các người cần kiểm tra; toàn khung
 vẫn chạy mỗi frame hợp lệ. Có thể so sánh `detector.roi_budget_per_frame=1` với `4`
@@ -172,3 +174,8 @@ test và hai giờ nền; ghi số thực tế nếu thiếu, không coi đây l
 
 Chưa có cảnh thử hợp lệ thì chưa có recall/FA/latency camera thực tế hoặc hiệu
 quả ở trẻ. Bộ test tổng hợp, ảnh vật và luồng canvas chỉ kiểm chứng phần mềm.
+
+Luồng crop theo người nằm trong `vision.people`; IMAGE mode của MediaPipe không
+giữ tracker nội bộ giữa các người khi tái sử dụng model. Bộ lọc thời gian của dự án
+vẫn riêng theo ID. Cần đo lại chi phí trên camera thật, đặc biệt bốn người. Quy trình
+checklist và ghép export nằm trong `targeted_camera_trials.md`.

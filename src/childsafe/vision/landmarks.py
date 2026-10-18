@@ -1,4 +1,4 @@
-"""MediaPipe Tasks wrappers (Face Landmarker + Hand Landmarker), VIDEO running mode.
+"""MediaPipe Tasks wrappers (Face Landmarker + Hand Landmarker), stateless IMAGE mode.
 
 MediaPipe >= 0.10.2x removed the legacy ``mp.solutions`` API, so this uses the Tasks API,
 which needs the .task model files (scripts/download_mediapipe_models.py).
@@ -28,24 +28,24 @@ class FrameLandmarks:
 class LandmarkDetector:
     def __init__(self, face_model: str, hand_model: str, num_hands: int = 2,
                  min_face_conf: float = 0.5, min_hand_conf: float = 0.5):
-        video = mpv.RunningMode.VIDEO
+        # Pooled instances move across temporary person IDs. VIDEO-mode internal
+        # tracking cannot be reset through the public API; IMAGE avoids carrying
+        # a previous person's hidden tracker state into another person's crop.
+        mode = mpv.RunningMode.IMAGE
         self.face = mpv.FaceLandmarker.create_from_options(mpv.FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=face_model), running_mode=video, num_faces=1,
+            base_options=BaseOptions(model_asset_path=face_model), running_mode=mode, num_faces=1,
             min_face_detection_confidence=min_face_conf, min_face_presence_confidence=min_face_conf,
             output_facial_transformation_matrixes=True))
         self.hand = mpv.HandLandmarker.create_from_options(mpv.HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=hand_model), running_mode=video, num_hands=num_hands,
+            base_options=BaseOptions(model_asset_path=hand_model), running_mode=mode, num_hands=num_hands,
             min_hand_detection_confidence=min_hand_conf, min_hand_presence_confidence=min_hand_conf))
-        self._last_ms = -1
 
     def detect(self, rgb: np.ndarray, t: float) -> FrameLandmarks:
         """rgb: HxWx3 uint8 RGB frame, t: seconds (monotonic)."""
         h, w = rgb.shape[:2]
-        ms = max(int(t * 1000), self._last_ms + 1)  # MediaPipe needs strictly increasing timestamps
-        self._last_ms = ms
         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=np.ascontiguousarray(rgb))
-        fr = self.face.detect_for_video(image, ms)
-        hr = self.hand.detect_for_video(image, ms)
+        fr = self.face.detect(image)
+        hr = self.hand.detect(image)
         scale = np.array([w, h, w], dtype=np.float32)
         out = FrameLandmarks(t=t, width=w, height=h)
         if fr.face_landmarks:

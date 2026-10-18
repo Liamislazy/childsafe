@@ -153,15 +153,16 @@ async function loadInfo() {
 // ---------- live ----------
 const work = document.createElement("canvas");
 async function start() {
-  if (starting) return;
+  if (starting) { stop(); return; }
   if (running) { stop(); return; }
   starting = true;
+  $('startBtn').textContent='Hủy bật camera';
   const generation = ++runToken;
   let acquired;
   try {
     // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
     acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-  } catch (e) { if (generation === runToken) { starting=false; $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
+  } catch (e) { if (generation === runToken) { stop(); $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
   if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
   stream = acquired;
   $("liveErr").textContent = "";
@@ -320,7 +321,7 @@ function draw(res) {
 
 // ---------- wiring ----------
 document.addEventListener('visibilitychange',()=>{
-  if (document.hidden && running) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
+  if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
 });
 $("startBtn").onclick = start;
 $("testSound").onclick = async () => {
