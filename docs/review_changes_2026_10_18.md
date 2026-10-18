@@ -80,3 +80,16 @@ người; 8 mẫu sau 2 warmup. Median/p90 (ms): YOLO 199,93/209,63; classifier
 Pipeline này không chạy workload mốc của nhiều người, không phải FPS camera hay
 độ trễ cảnh báo. Artifact số liệu tại `outputs/review_runtime_smoke_20261018.json`
 (không commit output). Không cộng các percentile riêng thành latency toàn hệ thống.
+
+## 7. Thu dữ liệu đúng lỗi và đóng phiên có thể kiểm toán
+
+Checklist tạo 20 điều kiện/split, kết quả trống; bao phủ góc cao, vật dài/che khuất,
+đổi người, thao tác thường, ngoài phạm vi và stress 4 người. Không tải dataset mới.
+`finalize_session.py` ghép ba export số từ trình duyệt với manifest đã có consent/
+chia subject; kiểm tra epoch, provenance và thời gian trước khi ghi. Đóng băng
+checksum feature/annotation, report phát hiện thay đổi nội dung sau đó.
+
+Hướng dẫn `targeted_camera_trials.md` yêu cầu đạo cụ lớn/mềm, không đưa vào miệng,
+ground truth do người quan sát độc lập. Không có dữ liệu camera mới trong đợt này.
+Kiểm chứng: kế hoạch tái lập, finalize/report, phát hiện sửa dữ liệu, marker chưa
+đóng, model khác và frame sau khi kết thúc. Toàn bộ ví dụ kiểm thử là số liệu giả.

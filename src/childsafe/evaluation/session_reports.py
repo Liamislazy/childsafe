@@ -32,6 +32,10 @@ def load_records(root,split):
         cfg=load_config(path.parent/'config.json')
         if config_hash(cfg)!=m['config_sha256']: raise ValueError('session config hash mismatch')
         if code_hash()!=m['code_sha256']: raise ValueError('runtime source changed; replay with the recorded source revision')
+        for field in ('features','annotations'):
+            expected=m.get(field+'_sha256')
+            if expected is not None and file_hash(path.parent/m[field])!=expected:
+                raise ValueError('finalized session content changed: '+field)
         f=pd.read_csv(path.parent/m['features']); gt=pd.read_csv(path.parent/m['annotations'])
         for field in ('config_sha256','classifier_sha256','detector_sha256','code_sha256'):
             if field not in f or f[field].isna().any() or not f[field].eq(m[field]).all():
