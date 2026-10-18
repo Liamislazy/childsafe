@@ -1,5 +1,6 @@
 """Presentation labels; numerical evidence and replay reasons remain unchanged."""
 REASONS = {
+    'object near mouth; category does not establish safety':'Vật gần vùng miệng; tên loại vật không xác nhận an toàn',
     'no observable person':'Chưa có người quan sát được',
     'no observable person; detector limited':'Chưa có người quan sát được; bộ định vị đang hạn chế',
     'poor exposure':'Ánh sáng vùng mặt không phù hợp',

@@ -419,6 +419,7 @@ class FramePipeline:
                 obj_result = None
                 self._clear_classification(state)
             out = state['processor'].step(f, obj_result)
+            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)

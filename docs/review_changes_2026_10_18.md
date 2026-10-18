@@ -20,3 +20,15 @@ buộc các tác vụ bất đồng bộ với thế hệ phiên để phản h�
 
 Kiểm chứng: hồi quy dừng trong lúc giải mã và inference, quyền sở hữu/expiry,
 reset khi bận, web runtime và nhãn quan sát. Chưa thử ngắt camera vật lý.
+
+## 3. Nguy cơ theo tình huống
+
+Giữ nguyên checkpoint và nhãn lịch sử của dataset. Runtime hiện đại dùng chính
+sách riêng: đồ chơi/trái cây/thìa gần miệng đủ bằng chứng yêu cầu chú ý ngay sau
+cửa sổ xác nhận, không chờ 3 giây vì nhãn `safe`. DANGER hiện chỉ áp dụng nhóm
+vật sắc/nhọn đã liệt kê, đủ xác suất, mask, quan sát và thời gian. Ổ điện/máy sưởi
+cần ngữ cảnh khác; không tự gán nguy cơ nghẹn từ tên vật hay kích thước ảnh.
+CSV legacy vẫn giữ luật lịch sử, được ghi rõ phiên bản chính sách riêng.
+
+Kiểm chứng: nhóm safe, ngoài phạm vi, unknown, mask yếu, replay và hồi quy cảnh báo.
+Chính sách là định nghĩa thử nghiệm, chưa có xác nhận y khoa hoặc đo hiệu quả thật.

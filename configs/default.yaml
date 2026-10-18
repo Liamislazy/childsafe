@@ -120,10 +120,16 @@ cascade:                    # D2
   classify_interval_s: 0.1
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
+hazard_policy:
+  # Explicit scope for high alerts: visible held sharp objects near the mouth in 2D.
+  # Toy/fruit/spoon labels do not establish suitability, size or absence of fragments.
+  # Socket/heater categories require different contextual detectors, not mouth rules.
+  mouth_hazards: {knife: sharp_object, fork: pointed_object, scissors: sharp_object}
+
 rules:                      # D3
   p_unsafe_danger: 0.60     # calibrated P(unsafe) needed for danger
   dwell_danger_s: 0.5       # near for at least this long before danger
-  dwell_safe_caution_s: 3.0 # safe object near mouth this long -> caution (capped, never danger)
+  dwell_safe_caution_s: 3.0 # legacy CSV only; modern proximity requests caution regardless of category
   ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
   # YOLO misses most small held objects; then classify the area around the hand (original Module B).
   # Only a confident unsafe result counts as evidence (stricter than the 0.6 mask path). UNTUNED.

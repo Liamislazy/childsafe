@@ -12,6 +12,7 @@ from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
 from childsafe.alerts.observation import observation
+from childsafe.alerts.hazards import assess_hazard
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
 NORMAL, CAUTION, DANGER = 0, 1, 2
@@ -220,20 +221,25 @@ class AlertProcessor:
         else:
             status, p_unsafe = "unsafe", 1.0
 
+        hazard = assess_hazard(obj_class,status,self.cfg,self.c.object_gate)
+
         # ---- D3 alert matrix ------------------------------------------------------------
         level, reason = NORMAL, ""
         if near:
-            if (status == 'unsafe' and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
+            if (status == 'unsafe' and (not modern or hazard.status == 'known_hazard')
+                    and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
                     and (not modern or f.get('proximity_evidence', False))):
                 level, reason = DANGER, "unsafe object near mouth in image"
             elif status in ("unsafe", "uncertain", "none"):
                 level, reason = CAUTION, f"{status} object near mouth"
+            elif modern:
+                level, reason = CAUTION, "object near mouth; category does not establish safety"
             elif status == "safe" and dwell >= rc["dwell_safe_caution_s"]:
                 level, reason = CAUTION, "safe object at mouth for long"   # safe objects cap at caution
         elif (self.c.approach and d is not None and status == "unsafe" and ttc < rc["ttc_caution_s"]
               and d < self.cfg["cascade"]["d_far"]):
             level, reason = CAUTION, "unsafe object approaching"
-        if modern and near_frame and not f.get('proximity_evidence',False) and status != 'safe':
+        if modern and near_frame and not f.get('proximity_evidence',False):
             level,reason = CAUTION,'suspected proximity; reliable mask evidence missing'
         candidate_d = f.get('candidate_object_d_relative', math.nan)
         if (modern and valid and visible and not f.get('association_ambiguous',False)
@@ -307,5 +313,7 @@ class AlertProcessor:
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
                 "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
                 'obj_conf': class_conf,
+                'hazard_status':hazard.status, 'hazard_type':hazard.kind,
+                'hazard_policy_version':hazard.policy_version if modern else 'legacy-dataset-v1',
                 'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
                 'green': level == NORMAL and quality == 'observable'}

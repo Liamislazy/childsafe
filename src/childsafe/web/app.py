@@ -254,6 +254,7 @@ class RuntimeDemo(Demo):
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'class': person['obj_class'], 'status': person['obj_status'],
+                'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
                 'p_unsafe': _nan_to_none(person['p_unsafe']),
                 'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
                 'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
@@ -359,6 +360,7 @@ def create_app(demo: Demo) -> FastAPI:
                 'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
                 'provenance':getattr(demo,'provenance',{}),
                 'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
+                'hazard_policy':demo.cfg.get('hazard_policy',{}),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")
