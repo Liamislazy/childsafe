@@ -197,7 +197,9 @@ class RuntimeDemo(Demo):
 
     def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.,
               sequence=None,capture_t=None,clock_uncertainty_s=None,session_epoch=None):
+        decode_start=time.perf_counter()
         rgb = _decode(body)
+        decode_s=time.perf_counter()-decode_start
         if kind in KINDS and severity > 0:
             rgb = corrupt(rgb, kind, severity, seed=int(time.time()*1000) % (1 << 30))
         with self.lock:
@@ -211,6 +213,7 @@ class RuntimeDemo(Demo):
             frame_gap = t-prev if prev is not None else 0.
             scene, _, out = self.pipeline.process(rgb, t, frame_age_s=frame_age_s,
                                                  processing_deadline=deadline)
+            out['decode_s']=decode_s
             if session_epoch is not None:
                 try:
                     with session_epoch.publication():
@@ -226,7 +229,8 @@ class RuntimeDemo(Demo):
         self.prev_frame_t = t
         for row in out['feature_rows']:
             row.update(browser_sequence=sequence,browser_capture_t=capture_t,
-                       clock_uncertainty_s=clock_uncertainty_s)
+                       clock_uncertainty_s=clock_uncertainty_s,decode_s=out.get('decode_s',0.),
+                       processed_gap_s=frame_gap)
         if not self.recording_full:
             if len(self.rows)+len(out['feature_rows']) <= 100000:
                 self.rows.extend(dict(row) for row in out['feature_rows'])

@@ -60,3 +60,23 @@ DANGER từ một mask mới hoặc đột biến. Các ngưỡng đều chưa h
 
 Kiểm chứng: cùng cảnh ở bốn tỷ lệ ảnh, người thứ ba độc lập, vật dài, mask ngoài
 box/rời rạc/đột biến, mất mẫu và nhất quán replay. Không suy ra tiếp xúc vật lý từ 2D.
+
+## 6. Ngân sách xử lý và đo đầy đủ
+
+Giới hạn mặc định một lần YOLO crop phụ mỗi frame, luân phiên người để không bỏ
+đói người cuối. Detector toàn khung vẫn chạy mỗi frame hợp lệ. Khi hết deadline
+không khởi tạo/chạy thêm MediaPipe/classifier/ROI. Log số lần detector và thời gian
+giải mã, báo mẫu hết hạn/vượt ngân sách, phân bố số người được theo dõi.
+
+`profile_live_session.py` đo cả chuỗi camera tại máy bằng model thật, bao gồm cold
+start, reconnect và thời gian không có frame; chỉ lưu CSV/JSON. Phải khai báo người
+lớn đồng ý tham gia hoặc ma-nơ-canh. Không chạy camera tự động trong đợt sửa code.
+Chưa có số đo 1/2/4 người hay recall thật; giới hạn ROI có thể ảnh hưởng recall và
+cần phiên dev đối chứng trước khi chọn cấu hình triển khai.
+
+Đo smoke cục bộ: CPU Torch 2.6.0+cpu, 2 threads, ảnh hình học 640×480 không có
+người; 8 mẫu sau 2 warmup. Median/p90 (ms): YOLO 199,93/209,63; classifier
+64,95/76,78; MediaPipe riêng 37,00/41,30; pipeline cảnh không người 193,63/219,74.
+Pipeline này không chạy workload mốc của nhiều người, không phải FPS camera hay
+độ trễ cảnh báo. Artifact số liệu tại `outputs/review_runtime_smoke_20261018.json`
+(không commit output). Không cộng các percentile riêng thành latency toàn hệ thống.

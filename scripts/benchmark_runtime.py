@@ -15,6 +15,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from childsafe.config import load_config
+from childsafe.runtime import configure_runtime
 from childsafe.pipeline import FramePipeline
 from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.object_classifier import ObjectClassifier
@@ -38,6 +39,7 @@ def main():
     ap.add_argument('--hand-model',required=True)
     ap.add_argument('--image')
     ap.add_argument('--samples',type=int,default=10)
+    ap.add_argument('--cpu-threads',type=int,default=2)
     ap.add_argument('--out',default='outputs/benchmark_runtime.json')
     args = ap.parse_args()
     if args.samples < 2:
@@ -52,17 +54,19 @@ def main():
         draw.rectangle((40,300,520,320),fill=(35,80,160))
         rgb = np.asarray(img)
         input_kind = 'generated nonhuman geometric scene; smoke test only'
-    detector = SegmentationDetector(args.detector)
+    cfg = load_config()
+    cfg['runtime']['cpu_threads']=args.cpu_threads
+    cfg['detector']['weights']=args.detector
+    configure_runtime(cfg)
+    detector = SegmentationDetector(args.detector,device='cpu',cpu_threads=args.cpu_threads)
     if not detector.ok:
         raise SystemExit('detector initialization failed: '+detector.error)
     classifier = ObjectClassifier(args.ckpt,device='cpu')
     landmarks = LandmarkDetector(args.face_model,args.hand_model)
-    cfg = load_config()
     cfg['paths'].update(face_model=args.face_model,hand_model=args.hand_model)
     pipe = FramePipeline(cfg,None,detector=detector,classifier=classifier)
     # CPU thread count is recorded; avoid oversubscription on small models.
     import torch
-    torch.set_num_threads(2)
     measurements = {name:[] for name in ['detector','classifier','landmarks','pipeline']}
     last_obj = None
     last_detections = []

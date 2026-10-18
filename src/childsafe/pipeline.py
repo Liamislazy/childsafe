@@ -94,7 +94,7 @@ class FramePipeline:
         else:
             lm.close()
 
-    def _zoom_detect(self, rgb, scene, active, ambiguous):
+    def _zoom_detect(self, rgb, scene, active, ambiguous, deadline=None):
         """Second detector pass on a crop around each person's hands and mouth. The full frame is
         resized to imgsz (640), so a small or distant held object is only a few pixels wide; in the
         crop it is several times larger. Objects found there are mapped back to full-frame
@@ -105,7 +105,15 @@ class FramePipeline:
             return 0
         h, w = rgb.shape[:2]
         found = 0
-        for track in active:
+        budget=dc.get('roi_budget_per_frame',self.tracker.max_people)
+        if not isinstance(budget,int) or isinstance(budget,bool) or budget<0:
+            raise ValueError('roi_budget_per_frame must be a nonnegative integer')
+        cursor=getattr(self,'_roi_cursor',0)%max(len(active),1)
+        ordered=active[cursor:]+active[:cursor]
+        self._roi_cursor=(cursor+1)%max(len(active),1)
+        for track in ordered:
+            if self.roi_passes>=budget or (deadline is not None and time.perf_counter()>=deadline):
+                break
             lm = scene.people.get(track.person_id)
             if track.person_id in ambiguous or lm is None or not lm.hands:
                 continue
@@ -142,6 +150,7 @@ class FramePipeline:
             cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
             bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
             bx1, by1 = int(bx0 + side), int(by0 + side)
+            self.roi_passes+=1
             for d in self._timed('detector_s',self.detector.detect,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
                 if d.label == 'person':
                     continue
@@ -206,6 +215,8 @@ class FramePipeline:
         self.session_id = self.session_id + 1 if session_id is None else session_id
 
     def _timed(self, stage, function, *args, **kwargs):
+        if stage=='detector_s':
+            self.detector_calls=getattr(self,'detector_calls',0)+1
         start = time.perf_counter()
         try:
             return function(*args, **kwargs)
@@ -218,6 +229,7 @@ class FramePipeline:
                 processing_deadline=None):
         start = time.perf_counter()
         self.timings = {}
+        self.detector_calls,self.roi_passes=0,0
         import copy
         prior_processors = ({pid:copy.deepcopy(state['processor']) for pid,state in self.states.items()}
                             if processing_deadline is not None else {})
@@ -243,11 +255,13 @@ class FramePipeline:
                 state['quality'] = ElevatedQuality(self.cfg.get('quality', {}))
                 state['mask_evidence'].reset()
                 state['object_box'] = None
-            self._acquire_landmarks(state)
+            if processing_deadline is None or time.perf_counter()<processing_deadline:
+                self._acquire_landmarks(state)
             box = tuple(int(v) for v in track.box)
             box = (max(0,box[0]), max(0,box[1]), min(w,box[2]), min(h,box[3]))
             scene.boxes[pid] = box
-            if state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]:
+            if (state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]
+                    and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 try:
                     # Tight body crops can prevent palm detection for a gripping hand.
                     # For a lone person retain the original camera framing, then check
@@ -290,7 +304,7 @@ class FramePipeline:
         # clearly closer to; only truly unclear hands make people ambiguous (see resolve_hands).
         ambiguous |= resolve_hands(scene.people, scene.boxes)
         scene.objects = [d for d in detections if d.label != 'person']
-        roi_found = self._zoom_detect(rgb, scene, active, ambiguous) if valid and source_ok else 0
+        roi_found = self._zoom_detect(rgb, scene, active, ambiguous,processing_deadline) if valid and source_ok else 0
         assignments=assign_objects(scene.objects,active,scene.people,
                                    self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
         assigned=assignments.owned
@@ -344,7 +358,8 @@ class FramePipeline:
                           0 <= t-last[0] < self.cfg.get('cascade', {}).get('classify_interval_s', .1) and
                           iou(last[1], obj.box) >= .5)
                 # Same object classified moments ago: the processor keeps that result (valid 1 s).
-                if self.classifier is not None and pid not in ambiguous and not recent:
+                if (self.classifier is not None and pid not in ambiguous and not recent
+                        and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                     try:
                         box = tuple(int(v) for v in obj.box)
                         box = (max(0,box[0]),max(0,box[1]),min(w,box[2]),min(h,box[3]))
@@ -383,7 +398,8 @@ class FramePipeline:
             hand_distance = f.get('d_face_width',math.nan)
             d_exit = self.cfg['temporal']['d_exit']
             suspicious_hand = math.isfinite(hand_distance) and hand_distance <= d_exit
-            if obj is None and suspicious_hand and pid not in ambiguous:
+            if (obj is None and suspicious_hand and pid not in ambiguous
+                    and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 hand_result = self._hand_crop_fallback(state, rgb, f, t)
                 if hand_result is not None:
                     obj_result = hand_result
@@ -492,6 +508,7 @@ class FramePipeline:
             f['peak_process_memory_bytes'] = memory
         for f in rows:
             f.update(self.provenance)
+            f.update(detector_calls=self.detector_calls,roi_detector_calls=self.roi_passes)
         return scene, rows[0] if rows else {}, aggregate
 
     def close(self):

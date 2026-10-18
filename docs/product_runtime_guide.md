@@ -145,6 +145,24 @@ riêng, nhưng các sự kiện khởi động vẫn phải giữ trong recall t
 Event CSV có session_id, lý do kết thúc và quality tại lúc bắt đầu sự kiện;
 không dùng snapshot quality đó để suy ra coverage toàn sự kiện.
 
+Đo toàn luồng tại máy trình diễn bằng người lớn đã đồng ý hoặc ma-nơ-canh:
+
+```powershell
+.venv\Scripts\python scripts/profile_live_session.py --source 0 --kind adult --consent-confirmed --condition elevated-720p-1person-bright --ckpt outputs/with_other/runs/efficientnet_b0_group_robust/best.pt --seconds 60 --width 1280 --height 720 --max-people 1 --cpu-threads 2 --out outputs/profile/elevated-720p-1person
+```
+
+Lặp lại cùng tình huống với 1/2/4 người và 480p/720p/1080p; ghi rõ camera có thực
+sự trả độ phân giải yêu cầu hay không (kích thước ảnh gốc trong feature). Model,
+thiết bị, cấu hình, timing từng bước và frame vượt ngân sách được lưu trong JSON.
+Không lưu ảnh/video hoặc URL kết nối. Phiên đo hiệu năng này không có nhãn sự kiện;
+không dùng nó để công bố recall/FA. Khi không có frame, thời gian thực vẫn được tính.
+
+Mặc định chỉ một crop YOLO phụ/frame, luân phiên các người cần kiểm tra; toàn khung
+vẫn chạy mỗi frame hợp lệ. Có thể so sánh `detector.roi_budget_per_frame=1` với `4`
+trên các phiên dev đối chứng. Giới hạn công việc không chứng minh recall được giữ
+nguyên. Giữ `stale_frame_s`/`max_gap_s` cho đến khi có đo dev, không tăng chỉ để làm
+cho DANGER xuất hiện trên máy chậm.
+
 ## Nghiệm thu thực tế còn lại
 
 Chạy ma trận trong `product_runtime_plan_to_2026_10_24.md`: camera ngang/cao,
