@@ -2,10 +2,30 @@
 import math
 import secrets
 import time
+from contextlib import contextmanager
+from threading import RLock
 
 
 class FrameRejected(ValueError):
     pass
+
+
+class SessionEpoch:
+    """Serialize cancellation with publication, without blocking stop on inference."""
+    def __init__(self, verify):
+        self.lock, self.cancelled, self.verify = RLock(), False, verify
+
+    @contextmanager
+    def publication(self):
+        with self.lock:
+            if self.cancelled:
+                raise FrameRejected('camera session ended during processing')
+            self.verify()
+            yield
+
+    def cancel(self):
+        with self.lock:
+            self.cancelled = True
 
 
 class BrowserLease:

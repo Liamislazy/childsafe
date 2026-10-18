@@ -112,7 +112,7 @@ const $ = id => document.getElementById(id);
 let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
 let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
-async function cameraClock(renew=false) {
+async function cameraClock(renew=false, generation=runToken) {
   const sent = performance.now()/1000;
   const q = new URLSearchParams({client_t:sent});
   if (renew) q.set('token',cameraToken);
@@ -120,9 +120,14 @@ async function cameraClock(renew=false) {
   const received = performance.now()/1000;
   const data = await response.json();
   if (!response.ok) throw new Error(data.error);
+  if (generation !== runToken) {
+    if (!renew) await fetch('/api/camera/end?'+new URLSearchParams({token:data.token}),{method:'POST'});
+    throw new Error('Phiên camera đã kết thúc');
+  }
   cameraToken = data.token;
   const sync = await fetch('/api/camera/sync?'+new URLSearchParams({token:cameraToken,client_t:received}),{method:'POST'});
   if (!sync.ok) throw new Error((await sync.json()).error);
+  if (generation !== runToken) throw new Error('Phiên camera đã kết thúc');
   lastSync = performance.now();
 }
 async function nextFrame(v) {
@@ -151,22 +156,30 @@ async function start() {
   if (starting) return;
   if (running) { stop(); return; }
   starting = true;
+  const generation = ++runToken;
+  let acquired;
   try {
     // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-  } catch (e) { starting=false; $("liveErr").textContent = "Không mở được camera: " + e.message; return; }
+    acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  } catch (e) { if (generation === runToken) { starting=false; $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
+  if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
+  stream = acquired;
   $("liveErr").textContent = "";
   for (const track of stream.getVideoTracks()) track.addEventListener('ended',()=>{
+    if (generation !== runToken) return;
     stop(); $('liveErr').textContent='Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.';
   });
   $("video").srcObject = stream;
-  try { await $("video").play(); await cameraClock(); } catch(e) { stop(); $("liveErr").textContent=e.message; return; }
+  try { await $("video").play(); await cameraClock(false,generation); } catch(e) {
+    if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
+  }
+  if (generation !== runToken) return;
   sequence = 0; lastMediaFrame = -1;
   if ($('sound').checked) {
     if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     audioContext.resume().catch(()=>{ $('sound').checked=false; });
   }
-  starting = false; running = true; runToken++; lastReply = performance.now(); lastLevel = 0;
+  starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
   frames = 0; lastFpsT = performance.now();
   $("startBtn").textContent = "Tắt camera"; loop(runToken);
 }
@@ -184,9 +197,9 @@ async function loop(token) {
   if (!running || token !== runToken) return;
   const v = $("video");
   try {
-    if (performance.now()-lastSync > 15000) await cameraClock(true);
+    if (performance.now()-lastSync > 15000) await cameraClock(true,token);
     if (!await nextFrame(v)) { requestAnimationFrame(()=>loop(token)); return; }
-  } catch(e) { stop(); $("liveErr").textContent=e.message; return; }
+  } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
   if (!running || token !== runToken) return;
   const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
   work.width = v.videoWidth; work.height = v.videoHeight;
@@ -194,6 +207,7 @@ async function loop(token) {
   wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
   wctx.drawImage(v, 0, 0);
   const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
+  if (!running || token !== runToken) return;
   const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value,
                                  token:cameraToken,sequence:++sequence,capture_t:captureT });
   try {
@@ -218,6 +232,7 @@ async function loop(token) {
       frames = 0; lastFpsT = now;
     }
   } catch (e) {
+    if (!running || token !== runToken) return;
     $("liveErr").textContent = "Chưa có kết quả mới: " + e.message;
     $('runtimeStatus').textContent='Thiếu dữ liệu quan sát; đang lấy ảnh mới.';
     $('liveModels').replaceChildren();

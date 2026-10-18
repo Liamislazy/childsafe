@@ -10,3 +10,13 @@ trí vẫn không phân biệt chắc chắn bằng tracker hình học; chưa c
 
 Kiểm chứng: các test tracking/identity/pipeline và hồi quy đổi người, đổi kích thước,
 timestamp không tăng, phục hồi IoU thấp. Không có thử camera người thật ở bước này.
+
+## 2. Đóng phiên camera
+
+Hủy phiên và công bố kết quả dùng chung khóa ngắn. Xử lý model đang chạy được phép
+kết thúc nhưng không ghi CSV hoặc giữ lịch sử nguy cơ sau hủy; thông tin phiên giữ
+nguyên epoch đã xuất. Bắt đầu phiên giữ khóa xử lý trong suốt reset. Frontend ràng
+buộc các tác vụ bất đồng bộ với thế hệ phiên để phản hồi cũ không tắt phiên mới.
+
+Kiểm chứng: hồi quy dừng trong lúc giải mã và inference, quyền sở hữu/expiry,
+reset khi bận, web runtime và nhãn quan sát. Chưa thử ngắt camera vật lý.
