@@ -49,10 +49,12 @@ class Track:
     box: tuple
     last_t: float
     ambiguous: bool = False
+    history_reset: bool = False
 
 
 class PersonTracker:
-    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15, primary_only=False, overlap_iou=.4):
+    def __init__(self, max_people=4, hold_s=.8, min_iou=.25, margin=.15, primary_only=False, overlap_iou=.4,
+                 motion_slack=.2, max_speed=4., max_scale_ratio=2.):
         self.max_people, self.hold_s = max_people, hold_s
         # Two people sitting side by side usually overlap a little (IoU 0.05-0.3). That alone is
         # not identity ambiguity; only heavy overlap (crossing) or unclear matching is.
@@ -64,6 +66,22 @@ class PersonTracker:
         self.min_iou, self.margin = min_iou, margin
         self.tracks = {}
         self.next_id = 1
+        self.motion_slack, self.max_speed, self.max_scale_ratio = motion_slack, max_speed, max_scale_ratio
+
+    def _plausible(self, old, box, t):
+        """Image-space continuity gate; this is not appearance-based re-identification."""
+        dt = t-old.last_t
+        if dt <= 0:
+            return False
+        a, b = np.asarray(old.box, float), np.asarray(box, float)
+        sizes = np.stack((a[2:]-a[:2], b[2:]-b[:2]))
+        if not np.isfinite(sizes).all() or (sizes <= 0).any():
+            return False
+        if (sizes.max(0)/sizes.min(0) > self.max_scale_ratio).any():
+            return False
+        movement = np.abs((a[:2]+a[2:]-b[:2]-b[2:])/2)/sizes.min(0)
+        limit = min(1., self.motion_slack+self.max_speed*min(dt,.25))
+        return bool((movement <= limit).all())
 
     def reset(self):
         self.tracks.clear()  # monotonically increasing IDs avoid reuse across source sessions
@@ -74,24 +92,23 @@ class PersonTracker:
             people = [max(people, key=lambda d: _area(d.box))]
         overflow = len(people) > self.max_people
         people = sorted(people, key=lambda d: d.confidence, reverse=True)[:self.max_people]
-        old = {k: v for k, v in self.tracks.items() if t-v.last_t <= self.hold_s}
-        scores = {i: sorted([(iou(d.box, v.box), k) for k, v in old.items()], reverse=True)
+        old = {k: v for k, v in self.tracks.items() if 0 < t-v.last_t <= self.hold_s}
+        scores = {i: sorted([(iou(d.box, v.box), k) for k, v in old.items() if self._plausible(v,d.box,t)], reverse=True)
                   for i, d in enumerate(people)}
         choices = {i: s[0][1] for i, s in scores.items() if s and s[0][0] >= self.min_iou}
-        # Fast motion at low FPS (or a missed frame) can drop IoU below min_iou for the same person.
-        # One person in view and one remembered ID: same person. With several people, only keep the
-        # ID if the single leftover detection's centre lies inside the old box (grown by 50%).
-        # Alert evidence is not carried over: the processor already resets after a >0.25 s gap.
+        # Low-IoU recovery may preserve a display ID only within the motion/scale gate.
+        # It always discards risk/geometry history, even at high FPS.
+        recovered = set()
         free_d = [i for i in range(len(people)) if i not in choices]
         free_t = [k for k in old if k not in set(choices.values())]
         if len(free_d) == 1 and len(free_t) == 1:
-            ob, nb = old[free_t[0]].box, people[free_d[0]].box
-            cx, cy = (nb[0]+nb[2])/2, (nb[1]+nb[3])/2
-            gx, gy = (ob[2]-ob[0])*.25, (ob[3]-ob[1])*.25
-            if (len(people) == 1 and len(old) == 1) or (ob[0]-gx <= cx <= ob[2]+gx and ob[1]-gy <= cy <= ob[3]+gy):
+            if self._plausible(old[free_t[0]],people[free_d[0]].box,t):
                 choices[free_d[0]] = free_t[0]
+                recovered.add(free_d[0])
         active = []
         retired = set(self.tracks)-set(old)
+        if len(people) == len(old) == 1 and not choices:
+            retired.update(old)  # replacement must not keep a ghost person's risk on screen
         for i, d in enumerate(people):
             s = scores[i]
             overlap = any(i != j and iou(d.box, other.box) > self.overlap_iou for j, other in enumerate(people))
@@ -104,7 +121,7 @@ class PersonTracker:
             if pid is None:
                 pid = self.next_id
                 self.next_id += 1
-            track = Track(pid, d.box, t, ambiguous)
+            track = Track(pid, d.box, t, ambiguous, i in recovered)
             active.append(track)
         current_ids = {v.person_id for v in active}
         retired -= current_ids

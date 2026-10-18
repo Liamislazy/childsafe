@@ -248,6 +248,12 @@ class FramePipeline:
             if pid not in self.states:
                 self.states[pid] = self._new_state()
             state = self.states[pid]
+            if track.history_reset:
+                state['processor'].reset()
+                self._clear_classification(state)
+                state['geometry'].__init__()
+                state['quality'] = ElevatedQuality(self.cfg.get('quality', {}))
+                state['object_box'] = None
             self._acquire_landmarks(state)
             box = tuple(int(v) for v in track.box)
             box = (max(0,box[0]), max(0,box[1]), min(w,box[2]), min(h,box[3]))
@@ -311,6 +317,7 @@ class FramePipeline:
             lm = scene.people.get(pid)
             f = state['geometry'](lm) if lm is not None else dict(t=t, face_ok=0, hand_ok=0)
             f.update(schema_version=2, person_id=pid, session_id=self.session_id,
+                     history_reset=track.history_reset,
                      source_ok=source_ok, frame_valid=valid, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s, detector_ok=self.detector.ok,
                      classifier_ok=self.classifier is not None and not state['classifier_error'],
