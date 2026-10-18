@@ -178,7 +178,7 @@ def cmd_grid(args, cfg, data):
     print(f"wrote {out}; then run once: evaluate_alerts.py report --split test --config {out}")
 
 
-def main():
+def legacy_main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["report", "tradeoff", "grid"])
     ap.add_argument("--split", default="test", choices=["dev", "test", "all"])
@@ -195,4 +195,11 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if '--legacy-metrics' in sys.argv:
+        sys.argv.remove('--legacy-metrics')
+        print('LEGACY METRICS: inferred negative exposure and tolerant event matching; not comparable to product reports')
+        legacy_main()
+    else:
+        from childsafe.evaluation.cli import main
+        main()

@@ -1,5 +1,5 @@
 # Central config. Every threshold here is a starting value, NOT a tuned result.
-# Tune D3 thresholds by grid search on the dev split of the scenario videos (scripts/grid_search.py),
+# Tune D3 thresholds with evaluate_alerts.py grid --sessions <root> --split dev,
 # and report on the held-out test split only.
 
 paths:

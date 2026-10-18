@@ -243,6 +243,8 @@ class RuntimeDemo(Demo):
                 'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
                 'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
                 'observation': person['observation'], 'green': person['green'],
+                'image_observation':person['image_observation'],
+                'validation_status':person['validation_status'], 'object_scope':person['object_scope'],
                 'reason': person['reason'], 'reasons': [reason_vi(r) for r in person['observation_reasons']],
                 'face': bool(lm is not None and lm.face is not None),
                 'mouth_visible': bool(features.get('mouth_visible')),

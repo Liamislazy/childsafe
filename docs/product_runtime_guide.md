@@ -118,6 +118,26 @@ Coverage `observable` bao gồm cả giới hạn model/calibration, nên có th
 thiếu quality trả coverage không xác định. Ablation ROI/detector cần các phiên mới
 đối chứng tương ứng; replay chỉ thay rule, không tái tạo detector khác từ CSV.
 
+Từ bản rà soát 18/10, báo thêm `image_observation_coverage`: tỷ lệ ảnh có miệng/tay
+đủ rõ theo gate hiện tại, độc lập với cờ hiệu chuẩn và phạm vi lớp vật. Đây không
+phải xác nhận mô hình đúng hoặc không có che khuất. `observation_coverage` vẫn giữ
+định nghĩa nghiêm ngặt; cả hai dùng toàn thời gian phiên làm mẫu số.
+
+Report, grid và tradeoff dùng chung phiên bản metric `explicit-exposure-v2`:
+
+```powershell
+.venv\Scripts\python scripts/evaluate_alerts.py grid --sessions outputs/scenarios --split dev --out outputs/grid_dev.json
+.venv\Scripts\python scripts/evaluate_alerts.py tradeoff --sessions outputs/scenarios --split dev --out outputs/tradeoff_dev.json
+.venv\Scripts\python scripts/evaluate_alerts.py report --sessions outputs/scenarios --split dev --config outputs/grid_dev_config.json --out outputs/tuned_dev.json
+```
+
+Chốt cấu hình đề xuất trước khi thu các phiên test mới. Report test dùng config
+được đóng băng trong từng phiên; không dò nhiều ngưỡng trên test. Bộ đọc kiểm tra
+subject dev/test, config, model và mã nguồn như lệnh report trước đây. Grid cần
+có cả sự kiện dương và đoạn âm rõ nhãn, cùng cấu hình thu dữ liệu.
+Đường CSV/báo cáo lịch sử của `evaluate_alerts.py` chỉ được bật bằng
+`--legacy-metrics`; số từ đó có định nghĩa khác và không được ghép với báo cáo sản phẩm.
+
 Timing gồm detector/landmarks/classifier/quality/other, peak memory toàn process,
 processed FPS/gap và slot overwrites nếu CLI. Không đếm mỗi dòng người như một
 frame. Memory không phải bộ nhớ riêng của một model. Warmup đánh giá hiệu năng

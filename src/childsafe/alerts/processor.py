@@ -11,7 +11,7 @@ import math
 from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
-from childsafe.alerts.observation import observation
+from childsafe.alerts.observation import observation, image_observation
 from childsafe.alerts.hazards import assess_hazard
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
@@ -114,6 +114,7 @@ class AlertProcessor:
             self.obj = None
         self.last_step_t = t
         quality, quality_reasons = observation(f)
+        image_quality, image_reasons = image_observation(f)
         modern = 'schema_version' in f
         valid = f.get('frame_valid', True) and f.get('source_ok', True)
         visible = bool(f.get('mouth_visible', f.get('face_ok'))) and valid
@@ -313,6 +314,9 @@ class AlertProcessor:
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
                 "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
                 'obj_conf': class_conf,
+                'image_observation':image_quality, 'image_observation_reasons':image_reasons,
+                'validation_status':'validated' if f.get('calibrated',False) else 'unvalidated',
+                'object_scope':'complete' if f.get('object_coverage',False) else 'limited',
                 'hazard_status':hazard.status, 'hazard_type':hazard.kind,
                 'hazard_policy_version':hazard.policy_version if modern else 'legacy-dataset-v1',
                 'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,

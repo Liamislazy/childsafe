@@ -32,3 +32,19 @@ CSV legacy vẫn giữ luật lịch sử, được ghi rõ phiên bản chính 
 
 Kiểm chứng: nhóm safe, ngoài phạm vi, unknown, mask yếu, replay và hồi quy cảnh báo.
 Chính sách là định nghĩa thử nghiệm, chưa có xác nhận y khoa hoặc đo hiệu quả thật.
+
+## 4. Metric thống nhất và chất lượng ảnh
+
+Report, grid và tradeoff mặc định dùng chung `explicit-exposure-v2`, duration khai
+báo đầy đủ và chỉ các đoạn `non_event` làm mẫu số FA/giờ. Alarm kéo dài qua đoạn
+dương và âm vẫn bị tính cảnh báo nhầm. Grid/tradeoff chỉ chạy dev. Tinh chỉnh từ
+CSV chỉ thay tham số cảnh báo; thay detector/crop cần thu phiên mới.
+
+Lệnh cũ dùng `--legacy-metrics` để đọc báo cáo lịch sử với cảnh báo không so sánh
+trực tiếp. Không dùng đường legacy để chọn tham số cho báo cáo sản phẩm.
+Thêm `image_observation_coverage` đo khả năng nhìn rõ ảnh theo gate hiện tại;
+`observation_coverage` vẫn là độ phủ nghiêm ngặt bao gồm hiệu chuẩn/phạm vi model.
+Chất lượng ảnh tốt không tự chứng nhận model hoặc tạo trạng thái xanh.
+
+Kiểm chứng: metric qua cùng dữ liệu dev/report, unknown exposure, không tune test,
+coverage không phụ thuộc cờ hiệu chuẩn, CLI report frozen-config và replay.

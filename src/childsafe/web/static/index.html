@@ -270,6 +270,7 @@ function renderRuntime(res) {
     if (person.level===0 && !person.green) level.style.color='#64748b';
     card.append(level);
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
+      `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
       `Vật: ${person.object || 'chưa phát hiện'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? 'đủ tin cậy' : 'chưa đủ'}`,
       `Phân loại: ${person.class || 'chưa có'} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[person.status] || person.status})`,
       `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
