@@ -24,6 +24,20 @@ def _pick_device(device):
         return 'cpu'
 
 
+def select_weights(dc):
+    """Detector weights for this machine: `weights_gpu` when CUDA is available (and the file exists),
+    otherwise `weights` (the small CPU / weak-device model)."""
+    weights, gpu = dc.get('weights', 'models/yolo11n-seg.pt'), dc.get('weights_gpu')
+    if gpu and Path(gpu).is_file() and dc.get('device', 'auto') in (None, '', 'auto', 0, '0', 'cuda', 'cuda:0'):
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return gpu
+        except Exception:
+            pass
+    return weights
+
+
 class SegmentationDetector:
     supports_roi = True   # FramePipeline may run a second, zoomed pass on hands/mouth crops
     def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640, cpu_threads=None):

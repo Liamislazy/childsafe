@@ -31,6 +31,8 @@ def main():
     ap.add_argument("--model", action="append", default=[], help="name=path/to/best.pt (repeatable)")
     ap.add_argument("--config", default=None)
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--accurate", action="store_true",
+                    help="GPU: use the larger yolo11m-seg detector (best for far objects; ~130-180 ms per frame)")
     ap.add_argument("--single-person", action="store_true",
                     help="follow only the largest person (ignore photos/screens/small faces in view)")
     args = ap.parse_args()
@@ -44,6 +46,8 @@ def main():
     configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True
+    if args.accurate:
+        cfg['detector']['weights_gpu'] = str(Path(cfg['detector']['weights']).with_name('yolo11m-seg.pt'))
     demo = RuntimeDemo(cfg, models)
     print(f"open http://127.0.0.1:{args.port}")
     try:

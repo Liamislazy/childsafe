@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--ckpt", default=str(FULL_DATASET_CHECKPOINT),
                     help="local checkpoint; defaults to the imported full-data Kaggle model")
     ap.add_argument("--no-classifier", action="store_true")
+    ap.add_argument("--accurate", action="store_true",
+                    help="GPU: use the larger yolo11m-seg detector (best for far objects; ~130-180 ms per frame)")
     ap.add_argument("--single-person", action="store_true",
                     help="follow only the largest person (ignore photos/screens/small faces in view)")
     ap.add_argument("--config", default=None)
@@ -76,6 +78,8 @@ def main():
     configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True
+    if args.accurate:
+        cfg['detector']['weights_gpu'] = str(Path(cfg['detector']['weights']).with_name('yolo11m-seg.pt'))
     rc = cfg["runtime"]
     ckpt = None if args.no_classifier else args.ckpt
     if ckpt is not None and not Path(ckpt).is_file():

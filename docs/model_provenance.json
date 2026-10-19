@@ -23,5 +23,17 @@
     "source": "existing local canonical-group training checkpoint from original checkout",
     "sha256": "53c2075e526a5ee7716ae324dff93fa74defd5e3fe806477d6ff3b394a8d3d64",
     "note": "not retrained; no external download URL exists"
+  },
+  "detector_s": {
+    "file": "yolo11s-seg.pt",
+    "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s-seg.pt",
+    "sha256": "1caa81c0195412efa411b632bcfb8c184939dddb6ae41f6a80c41b211ff257c3",
+    "note": "downloaded 2026-10-19; release publishes no digest, file size matches the release asset"
+  },
+  "detector_m": {
+    "file": "yolo11m-seg.pt",
+    "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m-seg.pt",
+    "sha256": "eb9a06f63e2206c35d68d839b08c362429ebecf933ad54c1ad68b2fd001c17cf",
+    "note": "downloaded 2026-10-19; release publishes no digest, file size matches the release asset"
   }
 }

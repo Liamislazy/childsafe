@@ -378,3 +378,17 @@ def test_far_person_is_zoomed_for_landmarks_and_mapped_back():
         assert not row['mouth_visible']                                 # old behaviour: face missed
     finally:
         pipe.close()
+
+
+def test_detector_weights_follow_the_device(tmp_path, monkeypatch):
+    import torch
+    from childsafe.vision.detection import select_weights
+    small, big = tmp_path / 'n.pt', tmp_path / 's.pt'
+    small.write_bytes(b'n'); big.write_bytes(b's')
+    dc = dict(weights=str(small), weights_gpu=str(big), device='auto')
+    monkeypatch.setattr(torch.cuda, 'is_available', lambda: True)
+    assert select_weights(dc) == str(big)                              # GPU -> larger model
+    assert select_weights(dict(dc, device='cpu')) == str(small)        # forced CPU -> small model
+    assert select_weights(dict(dc, weights_gpu=str(tmp_path / 'missing.pt'))) == str(small)
+    monkeypatch.setattr(torch.cuda, 'is_available', lambda: False)
+    assert select_weights(dc) == str(small)                            # weak device -> small model
