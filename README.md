@@ -1,15 +1,20 @@
-# Child dangerous-object warning system
+# ChildSafe object-near-mouth warning prototype
 
-*Hệ thống cảnh báo đồ vật nguy hiểm cho trẻ nhỏ dựa trên thị giác máy tính: kết hợp phân loại đồ vật an toàn/không an toàn và giám sát khoảng cách tới miệng theo thời gian thực.*
+*Nguyên mẫu xử lý tại chỗ để hỗ trợ người chăm sóc khi vật cầm tay tiến sát vùng miệng trên ảnh; không xác nhận tiếp xúc, nuốt hoặc nghẹn.*
 
 - **Module A**: safe/unsafe object classifier trained on ChildSUn (EfficientNet-B0, MobileNetV3, VGG19-BN baseline), with a leak-free group split, temperature scaling and Grad-CAM.
-- **Runtime**: one webcam/video URL, local YOLO11n segmentation, up to four temporary person IDs, MediaPipe on original-image person crops, and separate alert histories.
+- **Runtime**: one webcam/video URL, local YOLO11 segmentation selected for the device, up to four temporary person IDs, MediaPipe on original-image person crops, and separate alert histories.
 - **Rule layer**: duration window + hysteresis, visible object-mask proximity and normal / caution / danger, independently observable / degraded / unobservable. Cooldown limits notifications.
-- **Evaluation**: false alarms per hour, event recall, latency, compared with a per-frame distance-only baseline, plus ablations.
+- **Evaluation tools**: false alarms per hour, event recall and latency, with a distance-only baseline and ablations. Real-camera event results remain unmeasured.
 
 Background, scope and the literature notes are in [docs/handoff.md](docs/handoff.md). Ethics rules are in [docs/ethics.md](docs/ethics.md).
 
 For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Pen/coin detector training remains pending.
+
+For PIISE preparation, use the [scope, demonstration and evidence pack](docs/piise/README.md).
+`scripts/check_demo_readiness.py` inventories the actual selected local weights without opening a camera.
+`scripts/prepare_fair_evidence.py` exports the strict session comparison, or explicitly reports missing data.
+The finalized research report on Drive is separate and is not rewritten by these tools.
 
 For the complete ChildSUn + Open Images classification dataset (27,883 images, 11 classes), import [the Kaggle notebook](notebooks/childsafe_expanded_kaggle.ipynb) and follow [the full-data training instructions](docs/kaggle_expanded_training.md). Open Images test stays separate; validation and calibration use different groups.
 
