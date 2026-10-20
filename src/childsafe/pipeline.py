@@ -32,8 +32,9 @@ class FramePipeline:
         self.cfg, self.components = cfg, components
         from childsafe.evaluation.sessions import config_hash,file_hash,code_hash
         from pathlib import Path
-        from childsafe.vision.detection import select_weights
+        from childsafe.vision.detection import select_weights, describe_selection
         weights = select_weights(cfg.get('detector', {}))
+        self.detector_selection = describe_selection(cfg.get('detector', {}))
         self.provenance = dict(config_sha256=config_hash(cfg),code_sha256=code_hash(),
                                classifier_sha256=file_hash(ckpt) if ckpt and Path(ckpt).is_file() else None,
                                detector_sha256=file_hash(weights) if weights and Path(weights).is_file() else None)
@@ -42,6 +43,12 @@ class FramePipeline:
             weights, dc.get('min_conf', .5),
             object_confidence=dc.get('object_min_conf'), device=dc.get('device', 'auto'),
             imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
+        if getattr(self.detector, 'checksum', ''):
+            self.provenance['detector_sha256'] = self.detector.checksum
+        if detector is not None and getattr(detector, 'weights_file', None):
+            self.detector_selection.update(file=detector.weights_file,
+                                           device=str(getattr(detector, 'device', 'unknown')),
+                                           fallback=False, selection_reason='explicit_detector')
         if landmark_factory is None:
             def landmark_factory():
                 from childsafe.vision.landmarks import LandmarkDetector

@@ -31,6 +31,7 @@ from childsafe.vision.tracking import iou
 from childsafe.runtime.browser import BrowserLease, FrameRejected, SessionEpoch
 from childsafe.web.labels import reason_vi
 from childsafe.evaluation.sessions import file_hash,config_hash,code_hash
+from childsafe.product import product_scope, caregiver_action
 
 STATIC = Path(__file__).parent / "static"
 
@@ -155,8 +156,10 @@ class RuntimeDemo(Demo):
         self.paths = {self.live_name: models[self.live_name]}
         self.classifiers = {self.live_name: ObjectClassifier(self.paths[self.live_name])}
         self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
-        self.provenance = {'config_sha256':config_hash(cfg),'code_sha256':code_hash(),'classifier_sha256':file_hash(models[self.live_name]),
-                           'detector_sha256':file_hash(cfg['detector']['weights']) if Path(cfg['detector']['weights']).is_file() else None}
+        # The pipeline selects the active CPU/GPU weights. Do not replace its hash
+        # with the configured CPU model when automatic selection used s/m on CUDA.
+        self.provenance = dict(self.pipeline.provenance,
+                               classifier_sha256=file_hash(models[self.live_name]))
         self.pipeline.provenance = self.provenance
         self.t0 = time.perf_counter()
         self.rows = []
@@ -245,6 +248,7 @@ class RuntimeDemo(Demo):
             features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
             people.append({
                 'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
+                'caregiver_action':caregiver_action(person['level'], person['observation'], person['green']),
                 'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
                 'observation': person['observation'], 'green': person['green'],
                 'image_observation':person['image_observation'],
@@ -281,6 +285,9 @@ class RuntimeDemo(Demo):
             objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
         detector = self.pipeline.detector
         limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
+        selection = getattr(self.pipeline, 'detector_selection', {})
+        if selection.get('fallback'):
+            limitations.append('Không dùng được detector GPU đã cấu hình; đang dùng '+selection['file']+'.')
         if self.recording_full:
             limitations.append('Bộ nhớ số liệu đã đầy: tải phiên hiện tại rồi Reset alerts để bắt đầu phiên mới.')
         if not detector.ok:
@@ -296,6 +303,7 @@ class RuntimeDemo(Demo):
                 'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
                 'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
                 'green':out['green'], 'observation':out['observation'],
+                'caregiver_action':caregiver_action(out['level'], out['observation'], out['green']),
                 'reason':reason_vi(out['reason']), 'limitations':limitations,
                 'notify':any(p['notify'] for p in people),
                 'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
@@ -367,7 +375,9 @@ def create_app(demo: Demo) -> FastAPI:
                 'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
                 'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
                 'provenance':getattr(demo,'provenance',{}),
+                'detector':getattr(getattr(demo,'pipeline',None),'detector_selection',{}),
                 'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
+                'product_scope':product_scope(demo.cfg),
                 'hazard_policy':demo.cfg.get('hazard_policy',{}),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 

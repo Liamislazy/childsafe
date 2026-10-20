@@ -38,6 +38,25 @@ def select_weights(dc):
     return weights
 
 
+def describe_selection(dc):
+    """Explain automatic selection using file names only, without loading a model.
+
+    This is configuration/device information, not evidence of successful inference.
+    A missing GPU model must be visible when a CUDA machine falls back to the base model.
+    """
+    selected = select_weights(dc)
+    requested = dc.get('weights_gpu')
+    device = _pick_device(dc.get('device', 'auto'))
+    gpu_device = device not in (None, '', 'auto', 'cpu')
+    fallback = bool(gpu_device and requested and str(selected) != str(requested))
+    return dict(file=Path(selected).name, device=str(device),
+                gpu_file=Path(requested).name if requested else None,
+                fallback=fallback,
+                selection_reason=('gpu_weights_missing_or_device_not_supported' if fallback else
+                                  'gpu_weights_selected' if requested and str(selected)==str(requested) else
+                                  'base_weights_selected'))
+
+
 class SegmentationDetector:
     supports_roi = True   # FramePipeline may run a second, zoomed pass on hands/mouth crops
     def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640, cpu_threads=None):
@@ -52,6 +71,7 @@ class SegmentationDetector:
         self.device = 'cpu'
         self.imgsz = imgsz
         self.cpu_threads = cpu_threads
+        self.weights_file = Path(path).name
         try:
             p = Path(path)
             if not p.is_file():

@@ -48,6 +48,7 @@ def validate_sessions(sessions):
 
 def create_session(root, recording_id, split, subjects, condition, cfg, ckpt,
                    subject_kind='adult', consent_confirmed=False):
+    from childsafe.vision.detection import select_weights
     if not re.fullmatch(r'[A-Za-z0-9_-]+',recording_id):
         raise ValueError('recording id must be a plain slug')
     root = Path(root)
@@ -55,7 +56,7 @@ def create_session(root, recording_id, split, subjects, condition, cfg, ckpt,
                 subject_kind=subject_kind,consent_confirmed=consent_confirmed,condition=condition,
                 config_sha256=config_hash(cfg),classifier_sha256=file_hash(ckpt),
                 code_sha256=code_hash(),
-                detector_sha256=file_hash(cfg['detector']['weights']),
+                detector_sha256=file_hash(select_weights(cfg['detector'])),
                 annotation_scope='camera',start_s=None,end_s=None,
                 features='features.csv',annotations='annotations.csv',
                 status='awaiting independent annotation and numerical features')
