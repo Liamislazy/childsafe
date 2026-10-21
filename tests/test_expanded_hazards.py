@@ -44,6 +44,11 @@ def test_unreliable_conflicting_or_unrelated_evidence_never_upgrades_to_danger(k
     assert run(**kwargs)['level'] <= 1
 
 
+def test_classifier_cannot_override_confident_phone_detection_as_a_knife():
+    out = run(category='cell phone', crop='knife')
+    assert out['level'] == 1 and out['hazard_source'] == 'conflict'
+
+
 def test_scope_does_not_claim_new_classes_before_loading_weights():
     cfg = load_config()
     assert 'pen' in product_scope(cfg)['pending_training_categories']

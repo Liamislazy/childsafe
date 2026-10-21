@@ -12,7 +12,7 @@ from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
 from childsafe.alerts.observation import observation, image_observation
-from childsafe.alerts.hazards import assess_hazard, detector_hazard
+from childsafe.alerts.hazards import assess_hazard, detector_hazard, strong_detector_category
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
 NORMAL, CAUTION, DANGER = 0, 1, 2
@@ -228,11 +228,13 @@ class AlertProcessor:
         # A crop trained on eleven categories cannot veto a detector trained on
         # additional classes by returning "other". Keep both predictions visible.
         # A confident contradictory known crop category requests attention only.
-        conflict = (detected_hazard is not None and status in ('safe', 'unsafe')
-                    and obj_class != f.get('object_label'))
+        detector_category = strong_detector_category(f, self.cfg) if modern and self.c.object_gate else None
+        conflict = bool(detector_category and status in ('safe', 'unsafe') and obj_class != detector_category)
         if detected_hazard is not None:
             hazard = detected_hazard
-            hazard_source = 'conflict' if conflict else 'detector'
+            hazard_source = 'detector'
+        if conflict:
+            hazard_source = 'conflict'
         high_category = (not conflict and (
             detected_hazard is not None or (status == 'unsafe' and
             (not modern or hazard.status == 'known_hazard') and p_unsafe >= rc['p_unsafe_danger'])))
