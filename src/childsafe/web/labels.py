@@ -1,5 +1,7 @@
 """Presentation labels; numerical evidence and replay reasons remain unchanged."""
 REASONS = {
+    'hand near face; no localized object evidence':'Tay gần mặt; chưa định vị được vật, không đủ để phát cảnh báo',
+    'possible held object near mouth; localization uncertain':'Vật nghi ngờ gần miệng qua nhiều ảnh; định vị chưa đủ chắc chắn',
     'detected hazard near mouth in image':'Detector nhận vật thuộc nhóm nguy cơ gần vùng miệng trên ảnh',
     'unsafe object near mouth in image':'Vật thuộc nhóm nguy cơ gần vùng miệng trên ảnh',
     'object mask not temporally stable':'Vùng vật chưa ổn định qua thời gian',

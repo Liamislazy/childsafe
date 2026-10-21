@@ -30,7 +30,7 @@ def test_weak_localization_and_unsupported_object_never_create_high_alert():
     proc=AlertProcessor(load_config())
     obj=dict(p_unsafe_raw=.01,p_unsafe_cal=.01,obj_conf=.99,obj_class='toy')
     for i in range(20):
-        row=f(i*.1); row.update(proximity_evidence=False)
+        row=f(i*.1); row.update(proximity_evidence=False,object_present=True,candidate_object_d_relative=.1)
         out=proc.step(row,obj)
         assert out['level']<=1
     assert out['level']==1

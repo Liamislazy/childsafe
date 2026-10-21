@@ -92,7 +92,7 @@ def test_web_runtime_accepts_independent_strong_detector_but_not_unlocalized_han
             for index in range(15):
                 now[0] = index*.1
                 out = client.post('/api/frame',content=image()).json()
-            assert out['level'] == {'other':2, 'hand_only':1, 'empty':0}[kind]
+            assert out['level'] == {'other':2, 'hand_only':0, 'empty':0}[kind]
             assert not out['green']
             if kind=='other':
                 assert out['people'][0]['status'] == 'uncertain'

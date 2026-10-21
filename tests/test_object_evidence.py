@@ -63,7 +63,8 @@ def test_pipeline_localization_warms_up_without_dropping_candidate_caution():
         for i in range(15):
             _,row,out=demo.pipeline.process(np.full((160,160,3),140,np.uint8),i*.1)
             rows.extend(out['feature_rows'])
-            if i==0: assert not row['proximity_evidence'] and out['level']==1
+            if i==0: assert not row['proximity_evidence'] and out['level']==0  # one candidate frame is insufficient
+            if i==2: assert out['level']==1
         assert out['level']==2
         assert replay(pd.DataFrame(rows),demo.cfg).iloc[-1].level==out['level']
     finally: demo.close()

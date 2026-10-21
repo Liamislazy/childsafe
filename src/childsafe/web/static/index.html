@@ -68,7 +68,7 @@
 <body>
 <header>
   <h1>ChildSafe — thử cảnh báo camera</h1>
-  <span class="privacy">Xử lý trên máy này; ảnh chỉ nằm trong RAM, không lưu video.</span>
+  <span class="privacy">Xử lý trên máy này; không ghi video. Chỉ tải ảnh kiểm tra khi bạn bấm.</span>
 </header>
 
 <main>
@@ -79,7 +79,7 @@
     <p class="note">Không xác nhận tiếp xúc, nuốt hay nghẹn. Quay lưng hoặc che miệng có thể làm bỏ sót. Nguyên mẫu chưa được kiểm chứng để sử dụng thực tế.</p>
     <p id="activeDetector" class="note"></p>
   </details>
-  <p class="note">Theo dõi từng người, tay, miệng và mask vật. Tay hoặc vùng vật nghi ngờ sát miệng có thể tạo cảnh giác. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
+  <p class="note">Theo dõi từng người, tay, miệng và vùng vật. Tay gần mặt đơn thuần không tạo cảnh báo; vật nghi ngờ gần miệng cần xuất hiện qua thời gian. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
   <section id="live" class="grid">
     <div class="card">
       <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
@@ -87,6 +87,8 @@
         <button id="startBtn" class="btn">Bật camera</button>
         <button id="resetBtn" class="btn ghost">Đặt lại cảnh báo</button>
         <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
+        <button id="snapshotBtn" class="btn ghost" disabled>Tải ảnh kiểm tra</button>
+        <span id="snapshotStatus" class="note"></span>
         <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
         <button id="testSound" class="btn ghost">Thử âm báo</button>
         <label>Thử giảm chất lượng ảnh
@@ -209,6 +211,7 @@ async function start() {
     audioContext.resume().catch(()=>{ $('sound').checked=false; });
   }
   starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
+  $('snapshotBtn').disabled=false;
   frames = 0; lastFpsT = performance.now();
   $("startBtn").textContent = "Tắt camera"; loop(runToken);
 }
@@ -217,6 +220,7 @@ function stop() {
   if (cameraToken) fetch('/api/camera/end?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
   cameraToken = '';
   running = false; runToken++; $("startBtn").textContent = "Bật camera";
+  $('snapshotBtn').disabled=true;
   if (stream) stream.getTracks().forEach(t => t.stop());
   const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "Camera đã tắt";
   $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
@@ -279,6 +283,23 @@ function beep(level) {
   gain.gain.value = .08; oscillator.connect(gain); gain.connect(audioContext.destination);
   oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
 }
+
+async function downloadSnapshot() {
+  const v=$('video'),generation=runToken;
+  if (!running || !v.videoWidth || !v.videoHeight) return;
+  const canvas=document.createElement('canvas'); canvas.width=v.videoWidth; canvas.height=v.videoHeight;
+  const context=canvas.getContext('2d',{alpha:false});
+  context.setTransform(-1,0,0,1,canvas.width,0); context.drawImage(v,0,0);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if (!blob || !running || generation!==runToken) return;
+  // Explicit user click only. No overlay/predicted labels, upload, automatic
+  // recording or use of this frame as training ground truth.
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=`childsafe_frame_${Date.now()}.png`;
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+  $('snapshotStatus').textContent='Đã tải ảnh camera nguyên khung; bạn tự kiểm tra và gán nhãn.';
+}
 function renderRuntime(res) {
   const names = ['CHƯA GHI NHẬN NGUY CƠ', 'CẦN CHÚ Ý', 'NGUY CƠ CAO'];
   const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
@@ -308,7 +329,7 @@ function renderRuntime(res) {
       `Nguồn đánh giá loại nguy cơ: ${{detector:'detector độc lập với classifier',classifier:'classifier',conflict:'hai model khác nhau — chỉ cảnh giác',none:'chưa đủ'}[person.hazard_source] || 'chưa đủ'} · Điểm detector: ${person.object_confidence == null ? '—' : person.object_confidence.toFixed(2)} (không phải xác suất nguy hiểm)`,
       `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
       `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
-      `Dùng: ${person.d_source === 'object' ? 'vật' : 'tay'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      `Khoảng cách dùng cho cảnh báo: ${{object:'vật',hand:'tay (legacy)',none:'chưa có bằng chứng vị trí vật'}[person.d_source] || 'chưa rõ'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
     for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
     $('liveModels').append(card);
@@ -356,6 +377,7 @@ document.addEventListener('visibilitychange',()=>{
   if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
 });
 $("startBtn").onclick = start;
+$('snapshotBtn').onclick=downloadSnapshot;
 $("testSound").onclick = async () => {
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume(); beep(1);

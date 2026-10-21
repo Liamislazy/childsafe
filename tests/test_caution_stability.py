@@ -35,17 +35,19 @@ def rejected(t):
 
 
 def test_flickering_evidence_keeps_caution_steady():
-    frames = [f(i * .1) if i % 2 == 0 else rejected(i * .1) for i in range(30)]   # every other frame lost
+    # Establish an actual object event before testing brief alternating misses.
+    frames = [f(i*.1) for i in range(5)] + [f(.5+i*.1) if i%2==0 else rejected(.5+i*.1) for i in range(30)]
     lv = levels(proc(), frames)
-    assert all(l >= CAUTION for l in lv[1:])
+    assert all(l >= CAUTION for l in lv[5:])
     assert NORMAL in levels(proc(hold=0), frames)                                  # old behaviour flickers
 
 
-def test_object_kept_in_covered_mouth_stays_caution_beyond_the_hold():
+def test_hand_covering_mouth_cannot_extend_missing_object_evidence_indefinitely():
     p = proc()
     levels(p, [f(i * .1) for i in range(5)])
     lv = levels(p, [covered(.5 + i * .1) for i in range(60)])                       # 6 s with the mouth covered
-    assert all(l == CAUTION for l in lv)
+    assert lv[0] == CAUTION and lv[-1] == NORMAL
+    assert all(l == NORMAL for l in lv[9:])
 
 
 def test_hand_moving_away_while_mouth_hidden_ends_after_the_hold():

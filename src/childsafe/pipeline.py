@@ -401,8 +401,7 @@ class FramePipeline:
                 state['obj_result'] = (t, obj_result)
             # Classification cannot upgrade a weak mask/box or hand position to contact evidence.
             f['d_object'], f['d_hand'] = d_object, hand_distance
-            f['distance_source'] = ('object' if math.isfinite(d_object) and
-                                    (not math.isfinite(hand_distance) or d_object <= hand_distance) else 'hand')
+            f['distance_source'] = 'object' if math.isfinite(d_object) else 'hand'
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             f['classifier_ok'] = self.classifier is not None and not state['classifier_error']
@@ -413,7 +412,7 @@ class FramePipeline:
                 self._clear_classification(state)
                 state['mask_evidence'].reset()
             out = state['processor'].step(f, obj_result)
-            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version','hazard_source')})
+            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version','hazard_source','risk_distance_source')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)

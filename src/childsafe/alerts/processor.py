@@ -58,10 +58,14 @@ class AlertProcessor:
         self.hyst = Hysteresis(enter, tc["d_exit"] if self.c.hysteresis else enter)
         self.vote = TimeWindow(tc.get('window_s',10/30), tc.get('required_evidence_s',3/30)
                                if self.c.n_of_m else 0.,tc.get('max_gap_s',.25))
+        caution_s = cfg['rules'].get('caution_evidence_s', .15)
+        self.candidate_vote = TimeWindow(max(tc.get('window_s',10/30), caution_s),
+                                         caution_s,tc.get('max_gap_s',.25))
         self.reset()
 
     def reset(self):
         self.filter.reset(); self.speed_filter.reset(); self.hyst.reset(); self.vote.reset()
+        self.candidate_vote.reset()
         self.frame = 0
         self.prev_d = self.prev_t = None
         self.last_face_t = self.last_d = None
@@ -107,6 +111,7 @@ class AlertProcessor:
         gap_ok = 0 < dt <= tc.get('max_gap_s',.25)
         if self.last_step_t is not None and not gap_ok:
             self.filter.reset(); self.speed_filter.reset(); self.hyst.reset(); self.vote.reset()
+            self.candidate_vote.reset()
             self.prev_d = self.prev_t = None
             self.confirmed_dwell = 0.
             self.prev_confirmed = False
@@ -133,18 +138,17 @@ class AlertProcessor:
             self.obj = (t, obj["p_unsafe_raw"], obj["p_unsafe_cal"], obj.get("obj_class", ""),
                         obj.get('obj_conf',math.nan),obj.get('p_unknown_cal',0.))
 
-        # Distance to the mouth: from the held OBJECT whenever one was found (confirmed mask, else
-        # any mask or box of the object linked to the hand); hand -> mouth only when no object is
-        # known. DANGER still requires confirmed evidence (proximity_evidence) below.
+        # A bare hand near the face is common (scratching, resting the chin).
+        # Only a localized object's distance may start a modern risk alert.
+        # Keep hand-crop classification as diagnostics, not proof of an object.
+        candidate_d = f.get('candidate_object_d_relative', math.nan)
+        object_present = f.get('object_present', bool(f.get('proximity_evidence',False)
+                                                     or not _isnan(candidate_d)))
         d_raw = f.get(f"d_{self.norm}")
-        if modern and f.get('proximity_evidence', False):
-            d_raw = f.get('object_d_relative')
-        elif (modern and not _isnan(f.get('candidate_object_d_relative')) and f.get('hand_ok', False)
-              and f.get('object_present', True) is not False):
-            # object found but not confirmed: the closer of object->mouth and hand->mouth counts
-            # (only while the holding hand and object are observed)
-            cand = f.get('candidate_object_d_relative')
-            d_raw = cand if _isnan(d_raw) else min(cand, d_raw)
+        if modern:
+            d_raw = math.nan
+            if object_present and f.get('hand_ok',False) and f.get('detector_ok',False):
+                d_raw = f.get('object_d_relative') if f.get('proximity_evidence',False) else candidate_d
         if not visible or (modern and f.get('association_ambiguous')):
             d_raw = math.nan
         if visible and not _isnan(d_raw) and (not modern or f.get('proximity_evidence',False)):
@@ -255,41 +259,34 @@ class AlertProcessor:
         elif (self.c.approach and d is not None and status == "unsafe" and ttc < rc["ttc_caution_s"]
               and d < self.cfg["cascade"]["d_far"]):
             level, reason = CAUTION, "unsafe object approaching"
-        if modern and near_frame and not f.get('proximity_evidence',False):
-            level,reason = CAUTION,'suspected proximity; reliable mask evidence missing'
-        candidate_d = f.get('candidate_object_d_relative', math.nan)
-        if (modern and valid and visible and not f.get('association_ambiguous',False)
+        candidate_active = (modern and valid and visible and not f.get('association_ambiguous',False)
                 and f.get('hand_ok',False) and f.get('detector_ok',False)
-                and f.get('object_present',False) and not f.get('proximity_evidence',False)
-                and not _isnan(candidate_d) and candidate_d <= tc['d_enter'] and level < CAUTION):
+                and object_present and not _isnan(candidate_d) and candidate_d <= tc['d_enter'])
+        candidate_ready = self.candidate_vote(t,candidate_active)
+        renew_existing = bool(modern and self.event_active and self.last_alert_t is not None and candidate_active)
+        if (candidate_ready or renew_existing) and level < CAUTION:
             level,reason = CAUTION,'possible held object near mouth; localization uncertain'
-        if lost_near and level < CAUTION:
+        recent_alert = self.last_alert_t is not None and 0 <= t-self.last_alert_t <= sc['lost_hold_s']
+        if lost_near and level < CAUTION and (not modern or recent_alert):
             level, reason = CAUTION, "mouth hidden by hand"
         # ---- stable CAUTION -------------------------------------------------------------
-        # An object at the mouth covers it, so the mouth landmarks and the object mask flicker and
-        # CAUTION used to drop to NORMAL on every missing frame. Once raised from real evidence,
-        # CAUTION is kept for rules.caution_hold_s through missing evidence, and kept as long as the
-        # hand stays where the mouth was while the mouth is covered. Only an observed departure
-        # (mouth visible, object/hand beyond d_exit), the person leaving or the source dropping ends it.
+        # Briefly retain an alert started by a visible object. A hand remaining
+        # over the face never renews that evidence or extends its expiry.
         hold_s = rc.get('caution_hold_s', 0.)
-        if not valid:
+        if modern and (not valid or not visible or not object_present):
             hold_s = min(hold_s,sc['lost_hold_s'])
-        if level >= CAUTION:
+        current_object_evidence = not modern or (valid and visible and object_present and not _isnan(d_raw))
+        if level >= CAUTION and current_object_evidence:
             self.last_alert_t = t
         departed = visible and d is not None and d > tc['d_exit']
         stop = departed or not f.get('source_ok', True) or f.get('person_left', False)
+        caution_held = bool(modern and lost_near and level >= CAUTION)
         if stop:
             self.last_alert_t = None
         elif level < CAUTION and self.last_alert_t is not None and hold_s > 0:
-            covered = (valid and not visible and f.get('hand_ok') and
-                       ((not _isnan(f.get('d_last_mouth')) and f['d_last_mouth'] <= tc['d_exit']) or
-                        (f.get('face_ok') and not _isnan(f.get(f'd_{self.norm}'))
-                         and f[f'd_{self.norm}'] <= tc['d_exit'])))
-            if covered:
-                level, reason = CAUTION, 'mouth covered by hand/object'
-                self.last_alert_t = t
-            elif t - self.last_alert_t <= hold_s:
+            if t - self.last_alert_t <= hold_s:
                 level, reason = CAUTION, 'caution held: object was just at the mouth'
+                caution_held = True
         # Preserve recent risk, but do not accumulate dwell from held coordinates.
         missing_evidence = not visible or (modern and not f.get('proximity_evidence',False))
         held = (self.c.lost_landmark and missing_evidence and self.last_evidence_t is not None
@@ -298,12 +295,13 @@ class AlertProcessor:
         if held and self.last_level > level:
             level, reason = self.last_level, 'recent evidence held; mouth/object not observable'
         end_reason = ''
-        if self.event_active and not held:
+        if self.event_active and not (held or caution_held):
             if not f.get('source_ok', True):
                 end_reason = 'source_disconnected'
             elif f.get('person_left', False):
                 end_reason = 'person_left_frame'
-            elif not visible or f.get('association_ambiguous', False) or (self.event_reliable and missing_evidence):
+            elif (not visible or f.get('association_ambiguous', False) or (modern and not object_present)
+                  or (self.event_reliable and missing_evidence)):
                 end_reason = 'observation_lost'
             elif level == NORMAL:
                 end_reason = 'observed_departure' if not _isnan(d_raw) and d_raw > tc['d_exit'] else 'risk_changed'
@@ -324,7 +322,12 @@ class AlertProcessor:
             self.danger_block_until = t + tc["cooldown_s"]
 
         self.last_level = level
+        if modern and level == NORMAL and not object_present and visible and f.get('hand_ok'):
+            hand_d = f.get(f'd_{self.norm}')
+            if not _isnan(hand_d) and hand_d <= tc['d_exit']:
+                reason = 'hand near face; no localized object evidence'
         return {"t": t, "level": level, "reason": reason, "d_raw": d_raw, "d": d if d is not None else math.nan,
+                'risk_distance_source':('object' if not _isnan(d_raw) else 'none') if modern else 'hand',
                 "speed": speed, "ttc": ttc, "near_frame": near_frame, "near": near, "dwell": dwell,
                 "obj_status": status, "p_unsafe": p_unsafe, "obj_class": obj_class, "lost_near": lost_near,
                 "notify": notify, 'observation': quality, 'observation_reasons': quality_reasons,
@@ -335,5 +338,5 @@ class AlertProcessor:
                 'hazard_status':hazard.status, 'hazard_type':hazard.kind,
                 'hazard_source':hazard_source,
                 'hazard_policy_version':hazard.policy_version if modern else 'legacy-dataset-v1',
-                'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
+                'last_evidence_t': self.last_evidence_t, 'held': held or caution_held, 'end_reason': end_reason,
                 'green': level == NORMAL and quality == 'observable'}

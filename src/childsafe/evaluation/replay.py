@@ -32,7 +32,9 @@ def replay(features: pd.DataFrame, cfg: dict, components: Components | None = No
                      'classifier_ok','calibrated','object_coverage','proximity_evidence','object_present','person_left','hand_ok','face_ok','history_reset'):
             if name in f:
                 value = f[name]
-                f[name] = value is True or value == 1 or str(value).lower() == 'true'
+                # A CSV column mixing 1/0 and True/False is loaded as strings.
+                # Geometry uses integer flags, held rows use bool: normalize both.
+                f[name] = value is True or value == 1 or str(value).strip().lower() in ('true','1','1.0')
         obj = None
         modern = not _nan(f.get('schema_version'))
         if not modern:

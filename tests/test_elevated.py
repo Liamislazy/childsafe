@@ -72,7 +72,7 @@ def test_uncertain_mask_tip_requests_attention_without_confirmed_dwell():
     processor = AlertProcessor(load_config())
     for i in range(20):
         out = processor.step(dict(base,**proximity,t=i*.1))
-        assert out['level'] == 1 and out['dwell'] == 0 and not out['notify']
+        assert out['level'] == (0 if i < 2 else 1) and out['dwell'] == 0 and not out['notify']
     for overrides in [dict(mouth_visible=False),dict(association_ambiguous=True),
                       dict(hand_ok=False),dict(source_ok=False),dict(object_present=False)]:
         processor.reset()
