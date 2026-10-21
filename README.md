@@ -80,3 +80,8 @@ tests/                      pytest (python -m pytest)
 ## Detector bút và đũa
 
 Luồng train vị trí vật riêng nằm trong [hướng dẫn detector](docs/pen_chopsticks_detector_training.md) và [notebook Kaggle](notebooks/childsafe_detector_kaggle.ipynb). Dữ liệu nguyên khung/bounding box khác với crop phân loại; model hai lớp này cần kiểm chứng trước khi ghép vào camera.
+
+Lượt sửa camera tiếp theo có [runtime và quy trình train vật nguy cơ mở rộng](docs/expanded_hazard_runtime.md)
+và [notebook detector nhiều lớp](notebooks/childsafe_hazard_detector_kaggle.ipynb). Danh mục gán nhãn gồm
+15 loại; chỉ lớp có dữ liệu thật mới được train. Detector riêng ghép qua `--object-model`, giữ detector người.
+Trọng số trong máy hiện tại vẫn chưa nhận riêng bút/đũa/đồng xu; không coi danh mục cấu hình là model đã học.
