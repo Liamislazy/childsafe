@@ -117,7 +117,7 @@ cascade:                    # D2
   enabled: true
   d_far: 1.2                # run Module A only when normalized distance < d_far
   classify_every_n: 3       # and at most every N frames (cached in between)
-  classify_interval_s: 0.1
+  classify_interval_s: 0.3   # reuse only a recent same-object crop; changes clear the cache
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 hazard_policy:
@@ -125,6 +125,22 @@ hazard_policy:
   # Toy/fruit/spoon labels do not establish suitability, size or absence of fragments.
   # Socket/heater categories require different contextual detectors, not mouth rules.
   mouth_hazards: {knife: sharp_object, fork: pointed_object, scissors: sharp_object}
+  # Detector evidence is independent of the old 11-class crop classifier. A strong,
+  # stable mask for these classes may warn even when the crop says "other".
+  detector_min_conf: 0.75   # starting value; validate on dev, not a calibrated probability
+  supplemental_hazards:
+    pen: pointed_object
+    pencil: pointed_object
+    chopsticks: pointed_object
+    coin: small_object
+    button_battery: battery
+    cylindrical_battery: battery
+    screw: pointed_object
+    nail: pointed_object
+    safety_pin: pointed_object
+    needle: pointed_object
+    marble: small_object
+    small_toy_piece: small_object
 
 rules:                      # D3
   p_unsafe_danger: 0.60     # calibrated P(unsafe) needed for danger
@@ -138,7 +154,7 @@ rules:                      # D3
   hand_crop_min_p_unsafe: 0.8
 
 runtime:
-  cpu_threads: 0            # keep library defaults; optional measured CPU budget (training unaffected)
+  cpu_threads: 0            # measured here: forcing 2 was slower; CLI can override per machine
   max_people: 4
   primary_person_only: false # opt-in (--single-person): follow only the largest person; not for doll/child-next-to-adult tests
   identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
@@ -170,6 +186,10 @@ detector:
   roi_min_px: 192
   roi_max_frame_frac: 0.5   # skip when the crop would cover most of the frame
   complete_object_coverage: false # COCO excludes coins/pens; never infer their location
+  # Optional locally trained object-only model. Keep the person model above.
+  # Never downloaded/selected automatically; no new learned class without weights.
+  supplemental_weights: null
+  supplemental_min_conf: 0.5
 
 quality:
   calibrated: false

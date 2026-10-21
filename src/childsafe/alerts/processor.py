@@ -12,7 +12,7 @@ from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
 from childsafe.alerts.observation import observation, image_observation
-from childsafe.alerts.hazards import assess_hazard
+from childsafe.alerts.hazards import assess_hazard, detector_hazard
 from childsafe.vision.smoothing import EMA, NoFilter, make_filter
 
 NORMAL, CAUTION, DANGER = 0, 1, 2
@@ -223,14 +223,27 @@ class AlertProcessor:
             status, p_unsafe = "unsafe", 1.0
 
         hazard = assess_hazard(obj_class,status,self.cfg,self.c.object_gate)
+        hazard_source = 'classifier' if hazard.status == 'known_hazard' else 'none'
+        detected_hazard = detector_hazard(f, self.cfg) if modern and self.c.object_gate else None
+        # A crop trained on eleven categories cannot veto a detector trained on
+        # additional classes by returning "other". Keep both predictions visible.
+        # A confident contradictory known crop category requests attention only.
+        conflict = (detected_hazard is not None and status in ('safe', 'unsafe')
+                    and obj_class != f.get('object_label'))
+        if detected_hazard is not None:
+            hazard = detected_hazard
+            hazard_source = 'conflict' if conflict else 'detector'
+        high_category = (not conflict and (
+            detected_hazard is not None or (status == 'unsafe' and
+            (not modern or hazard.status == 'known_hazard') and p_unsafe >= rc['p_unsafe_danger'])))
 
         # ---- D3 alert matrix ------------------------------------------------------------
         level, reason = NORMAL, ""
         if near:
-            if (status == 'unsafe' and (not modern or hazard.status == 'known_hazard')
-                    and p_unsafe >= rc['p_unsafe_danger'] and dwell >= rc['dwell_danger_s']
+            if (high_category and dwell >= rc['dwell_danger_s']
                     and (not modern or f.get('proximity_evidence', False))):
-                level, reason = DANGER, "unsafe object near mouth in image"
+                level, reason = DANGER, ("detected hazard near mouth in image" if hazard_source == 'detector'
+                                         else "unsafe object near mouth in image")
             elif status in ("unsafe", "uncertain", "none"):
                 level, reason = CAUTION, f"{status} object near mouth"
             elif modern:
@@ -318,6 +331,7 @@ class AlertProcessor:
                 'validation_status':'validated' if f.get('calibrated',False) else 'unvalidated',
                 'object_scope':'complete' if f.get('object_coverage',False) else 'limited',
                 'hazard_status':hazard.status, 'hazard_type':hazard.kind,
+                'hazard_source':hazard_source,
                 'hazard_policy_version':hazard.policy_version if modern else 'legacy-dataset-v1',
                 'last_evidence_t': self.last_evidence_t, 'held': held, 'end_reason': end_reason,
                 'green': level == NORMAL and quality == 'observable'}

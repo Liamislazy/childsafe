@@ -32,17 +32,26 @@ class FramePipeline:
         self.cfg, self.components = cfg, components
         from childsafe.evaluation.sessions import config_hash,file_hash,code_hash
         from pathlib import Path
-        from childsafe.vision.detection import select_weights, describe_selection
+        from childsafe.vision.detection import select_weights, describe_selection, detector_hash, SupplementalDetector
         weights = select_weights(cfg.get('detector', {}))
         self.detector_selection = describe_selection(cfg.get('detector', {}))
         self.provenance = dict(config_sha256=config_hash(cfg),code_sha256=code_hash(),
                                classifier_sha256=file_hash(ckpt) if ckpt and Path(ckpt).is_file() else None,
-                               detector_sha256=file_hash(weights) if weights and Path(weights).is_file() else None)
+                               detector_sha256=detector_hash(cfg.get('detector', {})))
         dc = cfg.get('detector', {})
         self.detector = detector if detector is not None else SegmentationDetector(
             weights, dc.get('min_conf', .5),
             object_confidence=dc.get('object_min_conf'), device=dc.get('device', 'auto'),
             imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
+        if detector is None and dc.get('supplemental_weights'):
+            if not dc.get('roi_zoom', False) or dc.get('roi_budget_per_frame', 1) < 1:
+                raise ValueError('supplemental detector requires enabled ROI detection and a positive ROI budget')
+            supplemental = SegmentationDetector(dc['supplemental_weights'],
+                dc.get('supplemental_min_conf', .5), device=dc.get('device', 'auto'),
+                imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
+            self.detector = SupplementalDetector(self.detector, supplemental, self.provenance['detector_sha256'])
+            self.detector_selection['supplemental'] = dict(file=supplemental.weights_file,
+                ready=supplemental.ok, classes=supplemental.names, sha256=supplemental.checksum)
         if getattr(self.detector, 'checksum', ''):
             self.provenance['detector_sha256'] = self.detector.checksum
         if detector is not None and getattr(detector, 'weights_file', None):
@@ -130,7 +139,7 @@ class FramePipeline:
                 continue
             # A full-frame mask already resolves the held object: do not repeat
             # segmentation just to obtain a second view of the same visible pixels.
-            if dc.get('roi_skip_resolved', True):
+            if dc.get('roi_skip_resolved', True) and not hasattr(self.detector, 'supplemental'):
                 resolved = False
                 for detection in scene.objects:
                     if detection.mask is None or detection.confidence < self.cfg.get('quality', {}).get('min_mask_conf', .6):
@@ -162,7 +171,8 @@ class FramePipeline:
             bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
             bx1, by1 = int(bx0 + side), int(by0 + side)
             self.roi_passes+=1
-            for d in self._timed('detector_s',self.detector.detect,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
+            detect_roi = getattr(self.detector, 'detect_roi', self.detector.detect)
+            for d in self._timed('detector_s',detect_roi,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
                 if d.label == 'person':
                     continue
                 box = (d.box[0] + bx0, d.box[1] + by0, d.box[2] + bx0, d.box[3] + by0)
@@ -172,7 +182,7 @@ class FramePipeline:
                     mask[by0:by0 + d.mask.shape[0], bx0:bx0 + d.mask.shape[1]] = d.mask
                 obj = replace(d, box=box, mask=mask)
                 same = [k for k, o in enumerate(scene.objects) if iou(o.box, box) > .5]
-                if same and all(scene.objects[k].confidence >= obj.confidence for k in same):
+                if same and obj.source != 'supplemental' and all(scene.objects[k].confidence >= obj.confidence for k in same):
                     continue
                 scene.objects = [o for k, o in enumerate(scene.objects) if k not in same] + [obj]
                 found += 1
@@ -227,7 +237,8 @@ class FramePipeline:
 
     def _timed(self, stage, function, *args, **kwargs):
         if stage=='detector_s':
-            self.detector_calls=getattr(self,'detector_calls',0)+1
+            count = 2 if getattr(function, '__name__', '') == 'detect_roi' else 1
+            self.detector_calls=getattr(self,'detector_calls',0)+count
         start = time.perf_counter()
         try:
             return function(*args, **kwargs)
@@ -372,6 +383,7 @@ class FramePipeline:
             if f['mask_reliable'] and not f['mask_temporally_stable']:
                 f['quality_reasons'].append('object mask not temporally stable')
             f['object_present'] = obj is not None
+            f['object_detector_source'] = obj.source if obj is not None else ''
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
             d_object = (f['object_d_relative'] if f.get('proximity_evidence')
                         else f.get('candidate_object_d_relative', math.nan))
@@ -401,7 +413,7 @@ class FramePipeline:
                 self._clear_classification(state)
                 state['mask_evidence'].reset()
             out = state['processor'].step(f, obj_result)
-            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version')})
+            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version','hazard_source')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)

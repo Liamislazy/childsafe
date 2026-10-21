@@ -32,7 +32,7 @@ def _read(path: Path) -> dict:
 def load_config(path: str | Path | None = None) -> dict:
     cfg = _read(Path(path) if path else DEFAULT_CONFIG)
     cfg["paths"] = {k: str((ROOT / v).resolve()) for k, v in cfg["paths"].items()}
-    for key in ('weights', 'weights_gpu'):
+    for key in ('weights', 'weights_gpu', 'supplemental_weights'):
         if cfg.get('detector',{}).get(key):
             cfg['detector'][key] = str((ROOT / cfg['detector'][key]).resolve())
     return cfg

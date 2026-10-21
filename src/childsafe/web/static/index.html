@@ -118,7 +118,15 @@
 const $ = id => document.getElementById(id);
 let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
-let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
+let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1, latestMediaFrame = -1;
+function observeVideoFrames(v,generation) {
+  if (!v.requestVideoFrameCallback) return;
+  v.requestVideoFrameCallback((_,metadata)=>{
+    if (generation !== runToken) return;
+    latestMediaFrame=metadata.presentedFrames;
+    observeVideoFrames(v,generation);
+  });
+}
 async function cameraClock(renew=false, generation=runToken) {
   const sent = performance.now()/1000;
   const q = new URLSearchParams({client_t:sent});
@@ -139,6 +147,9 @@ async function cameraClock(renew=false, generation=runToken) {
 }
 async function nextFrame(v) {
   if (v.requestVideoFrameCallback) {
+    // Inference may span several camera frames. Use the latest already
+    // presented frame immediately instead of waiting for one more presentation.
+    if (latestMediaFrame > lastMediaFrame) { lastMediaFrame=latestMediaFrame; return true; }
     const metadata = await new Promise(resolve => v.requestVideoFrameCallback((_,m)=>resolve(m)));
     if (metadata.presentedFrames <= lastMediaFrame) return false;
     lastMediaFrame = metadata.presentedFrames;
@@ -155,7 +166,9 @@ async function loadInfo() {
   if (info.product_scope) {
     $('scopePurpose').textContent=info.product_scope.purpose;
     $('scopeObjects').textContent='Phạm vi nguy cơ cao: '+info.product_scope.high_alert_names.join(', ')+
-      '. Chưa có detector riêng: '+info.product_scope.unlocalized_examples.join(', ')+'.';
+      '. Model bổ sung có lớp: '+(info.product_scope.additional_detector_names.join(', ') || 'chưa nạp')+
+      '. Cần dữ liệu và train thêm: '+info.product_scope.pending_training_names.join(', ')+
+      '. '+info.product_scope.class_limit;
   }
   if (info.detector?.file) $('activeDetector').textContent='Detector được chọn: '+info.detector.file+
     ' · thiết bị yêu cầu: '+info.detector.device+(info.detector.fallback ? ' · đang dùng model thay thế vì model GPU không sẵn sàng.' : '.');
@@ -189,7 +202,8 @@ async function start() {
     if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
   }
   if (generation !== runToken) return;
-  sequence = 0; lastMediaFrame = -1;
+  sequence = 0; lastMediaFrame = latestMediaFrame = -1;
+  observeVideoFrames($("video"),generation);
   if ($('sound').checked) {
     if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     audioContext.resume().catch(()=>{ $('sound').checked=false; });
@@ -213,7 +227,7 @@ async function loop(token) {
   const v = $("video");
   try {
     if (performance.now()-lastSync > 15000) await cameraClock(true,token);
-    if (!await nextFrame(v)) { requestAnimationFrame(()=>loop(token)); return; }
+    if (!await nextFrame(v)) { setTimeout(()=>loop(token),0); return; }
   } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
   if (!running || token !== runToken) return;
   const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
@@ -253,7 +267,9 @@ async function loop(token) {
     $('liveModels').replaceChildren();
     $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
   }
-  requestAnimationFrame(() => loop(token));
+  // Camera frames already pace nextFrame(). An extra rendering callback can
+  // throttle inference when the browser deprioritizes painting this panel.
+  setTimeout(() => loop(token),0);
 }
 
 function beep(level) {
@@ -283,12 +299,13 @@ function renderRuntime(res) {
     const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
     const level=document.createElement('div'); level.className='level '+person.level_name;
     level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
-    if (person.level===0 && !person.green) level.style.color='#64748b';
+    if (person.level===0 && !person.green) { level.style.color='#cbd5e1'; level.style.background='#334155'; }
     card.append(level);
     const messages = [person.caregiver_action, `Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
       `Vật định vị: ${person.object_localized ? (person.object || 'chưa rõ loại') : 'chưa có'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
       `Phân loại: ${person.class || 'chưa có'} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[person.status] || person.status})`,
+      `Nguồn đánh giá loại nguy cơ: ${{detector:'detector độc lập với classifier',classifier:'classifier',conflict:'hai model khác nhau — chỉ cảnh giác',none:'chưa đủ'}[person.hazard_source] || 'chưa đủ'} · Điểm detector: ${person.object_confidence == null ? '—' : person.object_confidence.toFixed(2)} (không phải xác suất nguy hiểm)`,
       `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
       `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
       `Dùng: ${person.d_source === 'object' ? 'vật' : 'tay'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,

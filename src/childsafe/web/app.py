@@ -258,15 +258,17 @@ class RuntimeDemo(Demo):
                 'mouth_visible': bool(features.get('mouth_visible')),
                 'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
                 'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
-                # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
-                # pen, so a pen comes back as 'toothbrush').
-                'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
+                # Show each model's prediction independently; an old crop's "other"
+                # must not replace the category of the localized detector region.
+                'object': features.get('object_label') or ('vật trong tay' if features.get('object_present') else ''),
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'object_localized':bool(features.get('object_present')),
                 'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
                 'class': person['obj_class'], 'status': person['obj_status'],
                 'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
+                'hazard_source':person.get('hazard_source', 'none'),
+                'object_confidence':_nan_to_none(features.get('object_conf', math.nan)),
                 'p_unsafe': _nan_to_none(person['p_unsafe']),
                 'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
                 'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
@@ -284,7 +286,12 @@ class RuntimeDemo(Demo):
                     polygon = cv2.approxPolyDP(contour, .003*cv2.arcLength(contour, True), True)[:,0,:].tolist()
             objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
         detector = self.pipeline.detector
-        limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
+        scope = product_scope(self.cfg, self.pipeline.detector)
+        limitations = ['Chưa hiệu chuẩn camera.']
+        if scope['unlocalized_examples']:
+            limitations.append('Chưa có model nhận riêng: '+', '.join(scope['unlocalized_examples'])+'.')
+        if hasattr(self.pipeline.detector, 'supplemental') and not self.pipeline.detector.supplemental.ok:
+            limitations.append('Model vật bổ sung lỗi hoặc thiếu; không tính các lớp mới là đang hoạt động.')
         selection = getattr(self.pipeline, 'detector_selection', {})
         if selection.get('fallback'):
             limitations.append('Không dùng được detector GPU đã cấu hình; đang dùng '+selection['file']+'.')
@@ -377,7 +384,7 @@ def create_app(demo: Demo) -> FastAPI:
                 'provenance':getattr(demo,'provenance',{}),
                 'detector':getattr(getattr(demo,'pipeline',None),'detector_selection',{}),
                 'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
-                'product_scope':product_scope(demo.cfg),
+                'product_scope':product_scope(demo.cfg, getattr(getattr(demo,'pipeline',None),'detector',None)),
                 'hazard_policy':demo.cfg.get('hazard_policy',{}),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 

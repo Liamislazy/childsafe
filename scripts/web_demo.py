@@ -31,6 +31,8 @@ def main():
     ap.add_argument("--model", action="append", default=[], help="name=path/to/best.pt (repeatable)")
     ap.add_argument("--config", default=None)
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument('--cpu-threads', type=int, help='batch-one CPU thread budget; 0 restores library defaults')
+    ap.add_argument('--object-model', help='local trained object-only .pt; keeps the primary person model')
     ap.add_argument("--accurate", action="store_true",
                     help="GPU: use the larger yolo11m-seg detector (best for far objects; ~130-180 ms per frame)")
     ap.add_argument("--single-person", action="store_true",
@@ -43,6 +45,12 @@ def main():
         if not Path(p).exists():
             raise SystemExit(f"checkpoint for '{name}' not found: {p}")
     cfg = load_config(args.config)
+    if args.cpu_threads is not None:
+        cfg['runtime']['cpu_threads'] = args.cpu_threads
+    if args.object_model:
+        if not Path(args.object_model).is_file():
+            raise SystemExit('Supplemental object checkpoint does not exist; train/download it explicitly first.')
+        cfg['detector']['supplemental_weights'] = str(Path(args.object_model).resolve())
     configure_runtime(cfg)
     if args.single_person:
         cfg['runtime']['primary_person_only'] = True

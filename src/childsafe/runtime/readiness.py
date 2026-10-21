@@ -9,8 +9,11 @@ from childsafe.vision.detection import describe_selection, select_weights
 
 def demo_readiness(cfg, checkpoint):
     models = {}
-    for role, value in (('classifier', checkpoint), ('detector', select_weights(cfg['detector'])),
-                        ('face', cfg['paths']['face_model']), ('hand', cfg['paths']['hand_model'])):
+    inputs = [('classifier', checkpoint), ('detector', select_weights(cfg['detector'])),
+              ('face', cfg['paths']['face_model']), ('hand', cfg['paths']['hand_model'])]
+    if cfg['detector'].get('supplemental_weights'):
+        inputs.append(('supplemental_detector', cfg['detector']['supplemental_weights']))
+    for role, value in inputs:
         path = Path(value)
         exists = path.is_file()
         models[role] = dict(file=path.name, exists=exists,
