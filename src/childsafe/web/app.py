@@ -257,6 +257,9 @@ class RuntimeDemo(Demo):
                 'face': bool(lm is not None and lm.face is not None),
                 'mouth_visible': bool(features.get('mouth_visible')),
                 'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
+                'hand_roi_attempted':bool(features.get('hand_roi_attempted')),
+                'hand_roi_found':int(features.get('hand_roi_found',0)),
+                'hand_roi_error':features.get('hand_roi_error',''),
                 'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
                 # Show each model's prediction independently; an old crop's "other"
                 # must not replace the category of the localized detector region.
@@ -265,6 +268,8 @@ class RuntimeDemo(Demo):
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'object_localized':bool(features.get('object_present')),
                 'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
+                'candidate_localization':features.get('candidate_localization',''),
+                'object_mask_pixels':features.get('object_mask_pixels',0),
                 'class': person['obj_class'], 'status': person['obj_status'],
                 'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
                 'hazard_source':person.get('hazard_source', 'none'),
@@ -301,6 +306,8 @@ class RuntimeDemo(Demo):
             limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
         if not people:
             limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
+        if any(row.get('roi_budget_skips',0) for row in out['feature_rows']):
+            limitations.append('Thiếu thời gian để dò vật trong vùng nhỏ ở ảnh này; có thể bỏ sót vật ở xa.')
         max_gap = self.cfg['temporal'].get('max_gap_s',.25)
         if frame_gap > max_gap or out['inference_s'] > max_gap:
             limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '

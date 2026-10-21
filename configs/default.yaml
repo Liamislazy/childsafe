@@ -92,6 +92,12 @@ landmarks:
   zoom_below_frac: 0.6
   zoom_target_px: 640
   zoom_max_scale: 3.0
+  hand_roi_retry: true       # if hands are missed: one person per frame gets a bounded hand-only crop retry
+  hand_roi_scale: 3.0
+  hand_roi_min_px: 128
+  hand_roi_min_face_px: 40   # original pixels; enlargement never restores missing detail
+  hand_roi_max_frame_frac: 0.35
+  hand_roi_budget_s: 0.045   # require this much deadline headroom before optional work
 
 smoothing:
   method: one_euro          # none | ema | one_euro
@@ -118,6 +124,7 @@ cascade:                    # D2
   d_far: 1.2                # run Module A only when normalized distance < d_far
   classify_every_n: 3       # and at most every N frames (cached in between)
   classify_interval_s: 0.3   # reuse only a recent same-object crop; changes clear the cache
+  classify_min_budget_s: 0.04 # skip optional crop classification rather than expire the whole frame
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 hazard_policy:
@@ -147,9 +154,8 @@ rules:                      # D3
   dwell_danger_s: 0.5       # near for at least this long before danger
   dwell_safe_caution_s: 3.0 # legacy CSV only; modern proximity requests caution regardless of category
   ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
-  # YOLO misses most small held objects; then classify the area around the hand (original Module B).
-  # Only a confident unsafe result counts as evidence (stricter than the 0.6 mask path). UNTUNED.
-  hand_crop_fallback: true
+  # A hand-crop guess is diagnostic only; save CPU by disabling it in the live profile.
+  hand_crop_fallback: false
   caution_evidence_s: 0.15  # sustained localized candidate; a bare hand never starts an alert. UNTUNED
   caution_hold_s: 1.5       # missing object/mouth is capped by smoothing.lost_hold_s; no hand-only renewal
   hand_crop_min_p_unsafe: 0.8
@@ -183,7 +189,9 @@ detector:
   roi_zoom: true
   roi_skip_resolved: true   # skip the extra pass when a confident held mask is already near the mouth
   roi_budget_per_frame: 1   # at most one optional crop pass; rotate people to avoid starvation
+  roi_min_budget_s: 0.06    # also require an estimate of the next detector pass plus margin
   roi_scale: 1.8            # crop side = hands+mouth extent x this
+  roi_per_hand: true       # alternate hand+mouth crops; do not combine widely separated hands
   roi_min_px: 192
   roi_max_frame_frac: 0.5   # skip when the crop would cover most of the frame
   complete_object_coverage: false # COCO excludes coins/pens; never infer their location

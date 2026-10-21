@@ -135,21 +135,42 @@ class ElevatedQuality:
                     original_face_px=face_px, original_mouth_px=mouth_px, original_hand_px=hand_px)
 
 
+def box_region_distance(box,polygon,width,height):
+    """Distance of a clipped rectangle to the mouth; candidate evidence ONLY.
+
+    Compute rectangle geometry directly; never manufacture foreground pixels or
+    claim the rectangle contains a visible object tip.
+    """
+    if box is None or len(box)!=4 or not np.isfinite(box).all():
+        return math.nan
+    x0,y0,x1,y1=box
+    x0,y0,x1,y1=max(0,x0),max(0,y0),min(width,x1),min(height,y1)
+    if x1<=x0 or y1<=y0:
+        return math.nan
+    mouth=np.asarray(polygon,dtype=np.float32)
+    if len(mouth)<3 or not np.isfinite(mouth).all():
+        return math.nan
+    mouth=cv2.convexHull(mouth).reshape(-1,2)
+    rect=np.array([[x0,y0],[x1,y0],[x1,y1],[x0,y1]],dtype=np.float32)
+    if ((mouth[:,0]>=x0)&(mouth[:,0]<=x1)&(mouth[:,1]>=y0)&(mouth[:,1]<=y1)).any():
+        return 0.
+    if len(mouth)>=3 and cv2.intersectConvexConvex(rect,mouth)[0]>0:
+        return 0.
+    def vertices_to_edges(points,region):
+        edges=np.roll(region,-1,axis=0)-region
+        delta=points[:,None,:]-region[None,:,:]
+        projection=np.clip((delta*edges).sum(2)/np.maximum((edges*edges).sum(1),1e-9),0,1)
+        return float(np.linalg.norm(delta-projection[:,:,None]*edges,axis=2).min())
+    return min(vertices_to_edges(mouth,rect),vertices_to_edges(rect,mouth))
+
+
 def object_proximity(detection, lm, f, cfg):
     mask = detection.mask if detection is not None else None
-    from_box = False
-    if detection is not None and mask is None and lm is not None:
-        # No segmentation mask: use the object's box, so the distance is still object -> mouth.
-        # A box is never trusted as confirmed (DANGER) evidence, only as a candidate.
-        mask = np.zeros((lm.height, lm.width), bool)
-        x0, y0, x1, y1 = (int(round(v)) for v in detection.box)
-        mask[max(y0, 0):max(y1, 0), max(x0, 0):max(x1, 0)] = True
-        from_box = True
     mask_present = (mask is not None and mask.shape == (lm.height,lm.width) and
                     np.count_nonzero(mask) >= cfg.get('min_mask_px',16)) if lm is not None else False
-    mask_ok = mask_present and not from_box and detection.confidence >= cfg.get('min_mask_conf',.6)
+    mask_ok = mask_present and detection.confidence >= cfg.get('min_mask_conf',.6)
     geometry_ok=False
-    if mask_present and not from_box:
+    if mask_present:
         ys,xs=np.nonzero(mask)
         x0,y0,x1,y1=detection.box
         inside=((xs>=x0-2)&(xs<x1+2)&(ys>=y0-2)&(ys<y1+2)).mean()
@@ -165,15 +186,23 @@ def object_proximity(detection, lm, f, cfg):
                not f.get('association_ambiguous',False) and 'hand too small' not in f.get('quality_reasons',[]))
     # Low-confidence localization can request attention, but never supplies
     # confirmed evidence or dwell toward a danger alert.
-    candidate = (mask_present and observable and detection.confidence >= cfg.get('min_candidate_mask_conf',.5))
-    # trusted implies candidate whenever min_candidate_mask_conf <= min_mask_conf: measure once.
+    candidate = (detection is not None and observable and
+                 detection.confidence >= cfg.get('min_candidate_mask_conf',.5))
+    candidate_mask = candidate and mask_present and geometry_ok
     measured = (mask_region_distance(mask,lm.face[MOUTH_POLYGON,:2])
-                if trusted or candidate else math.nan)
+                if trusted or candidate_mask else math.nan)
     d_px = measured if trusted else math.nan
-    candidate_px = measured if candidate else math.nan
+    candidate_px = measured if candidate_mask else (
+        box_region_distance(detection.box,lm.face[MOUTH_POLYGON,:2],lm.width,lm.height) if candidate else math.nan)
+    candidate_source=('mask' if candidate_mask else 'box') if math.isfinite(candidate_px) else ''
+    box=detection.box if detection is not None else (math.nan,)*4
     return dict(mask_reliable=mask_ok, proximity_evidence=bool(trusted), object_d_px=d_px,
                 mask_geometry_ok=geometry_ok,
                 object_d_relative=d_px/max(f.get('face_width',1),1) if trusted else math.nan,
                 candidate_object_d_relative=candidate_px/max(f.get('face_width',1),1) if candidate else math.nan,
+                candidate_localization=candidate_source,
+                object_mask_pixels=int(np.count_nonzero(mask)) if mask is not None else 0,
+                object_box_width_px=box[2]-box[0],object_box_height_px=box[3]-box[1],
+                object_x0=box[0],object_y0=box[1],object_x1=box[2],object_y1=box[3],
                 object_label=detection.label if detection is not None else '',
                 object_conf=detection.confidence if detection is not None else math.nan)

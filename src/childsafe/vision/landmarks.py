@@ -47,15 +47,27 @@ class LandmarkDetector:
         fr = self.face.detect(image)
         hr = self.hand.detect(image)
         scale = np.array([w, h, w], dtype=np.float32)
-        out = FrameLandmarks(t=t, width=w, height=h)
+        out = self._hand_result(hr,w,h,t)
         if fr.face_landmarks:
             out.face = np.array([[p.x, p.y, p.z] for p in fr.face_landmarks[0]], np.float32) * scale
             if fr.facial_transformation_matrixes:
                 out.face_matrix = np.asarray(fr.facial_transformation_matrixes[0])
+        return out
+
+    @staticmethod
+    def _hand_result(hr,w,h,t):
+        out=FrameLandmarks(t=t,width=w,height=h)
+        scale=np.array([w,h,w],dtype=np.float32)
         for lm, hd in zip(hr.hand_landmarks, hr.handedness):
             out.hands.append(np.array([[p.x, p.y, p.z] for p in lm], np.float32) * scale)
             out.handedness.append(hd[0].category_name if hd else "")
         return out
+
+    def detect_hands(self,rgb: np.ndarray,t: float) -> FrameLandmarks:
+        """Optional local ROI retry; IMAGE mode never carries another person's tracker."""
+        h,w=rgb.shape[:2]
+        image=mp.Image(image_format=mp.ImageFormat.SRGB,data=np.ascontiguousarray(rgb))
+        return self._hand_result(self.hand.detect(image),w,h,t)
 
     def close(self):
         self.face.close()

@@ -9,6 +9,11 @@ Cập nhật chống báo nhầm 21/10: tay gần mặt đơn thuần không kh�
 ứng viên chưa có mask chắc chắn cần tồn tại theo thời gian. Mất quan sát chỉ giữ bằng chứng tối đa
 0,8 giây, tay che mặt không tự gia hạn. Xem `docs/face_touch_fix_2026_10_21.md` để biết giới hạn còn lại.
 
+Cập nhật vật nhỏ 21/10: thử tìm tay trong vùng nhỏ khi bị bỏ sót, dò vật theo từng
+tay và giữ hộp vật khi mask hỏng làm ứng viên CAUTION. Các lượt phụ có kiểm tra
+ngân sách thời gian; vẫn chưa có detector bút và chưa kiểm chứng bút ở 2 m.
+Xem `docs/distant_object_fix_2026_10_21.md` trước khi thử lại.
+
 ## Chạy trên máy hiện tại
 
 ```powershell
