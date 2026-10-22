@@ -98,3 +98,15 @@ def test_web_runtime_warns_for_unknown_and_hand_without_mask(monkeypatch):
             if kind=='hand_only': assert not out['people'][0]['mask_reliable']
             if kind=='empty': assert not out['people'] and out['limitations']
         finally: demo.close()
+
+
+def test_session_records_input_source_and_rejects_unknown_source():
+    demo = runtime('unsafe'); client = TestClient(create_app(demo))
+    now = __import__('childsafe.web.app',fromlist=['time']).time.perf_counter()
+    assert client.post('/api/camera/start',params={'client_t':now,'source':'upload'}).status_code == 422
+    started = client.post('/api/camera/start',params={'client_t':now,'source':'video_file'})
+    assert started.status_code == 200 and started.json()['input_source'] == 'video_file'
+    assert client.get('/api/session.json').json()['input_source'] == 'video_file'
+    client.post('/api/camera/end',params={'token':started.json()['token']})
+    started = client.post('/api/camera/start',params={'client_t':now})
+    assert client.get('/api/session.json').json()['input_source'] == 'camera'

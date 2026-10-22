@@ -8,6 +8,8 @@
 - Detector training frames (`scripts/own_camera_detector.py capture`, `data/recordings/detector_frames/`, git-ignored):
   still frames only, adult volunteers or dolls with the same written consent (it must name training as a purpose),
   participant codes instead of names. Delete with the other recordings after the project.
+- Web demo video mode plays a local file in the browser and sends frames like the camera; the file is not uploaded
+  or written by the app. Only adult volunteers or dolls; the page asks for confirmation but cannot check the content.
 - No cloud VLM / API on frames that contain faces.
 - The system does **not** replace adult supervision. Worst failure mode: a missed danger (false negative), e.g. when the
   object is occluded, the lighting is poor, or the child is outside the camera view. Say this in the report and in the demo.

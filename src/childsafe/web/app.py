@@ -33,6 +33,9 @@ from childsafe.web.labels import reason_vi
 from childsafe.evaluation.sessions import file_hash,config_hash,code_hash
 
 STATIC = Path(__file__).parent / "static"
+# camera: live webcam. video_file: a local file played by the browser in real time; the file never
+# reaches the server, only the same in-memory JPEG frames as the camera path.
+INPUT_SOURCES = ('camera', 'video_file')
 
 
 def _nan_to_none(x):
@@ -310,8 +313,10 @@ def create_app(demo: Demo) -> FastAPI:
     session_epoch = None
 
     @app.post('/api/camera/start')
-    async def camera_start(client_t: float):
+    async def camera_start(client_t: float, source: str = 'camera'):
         nonlocal session_epoch
+        if source not in INPUT_SOURCES:
+            return JSONResponse({'error':'unknown input source'},status_code=422)
         if processing.locked():
             return JSONResponse({'error':'camera busy'},status_code=503)
         try:
@@ -324,7 +329,8 @@ def create_app(demo: Demo) -> FastAPI:
                 await run_in_threadpool(demo.reset)
                 demo.session_start_s=time.perf_counter()-getattr(demo,'t0',time.perf_counter())
                 demo.session_end_s=None
-                result.update(t=demo.session_start_s,runtime_session_id=getattr(getattr(demo,'pipeline',None),'session_id',None))
+                demo.input_source=source
+                result.update(input_source=source,t=demo.session_start_s,runtime_session_id=getattr(getattr(demo,'pipeline',None),'session_id',None))
             return result
         except FrameRejected as exc:
             return JSONResponse({'error':str(exc)},status_code=409)
@@ -465,6 +471,7 @@ def create_app(demo: Demo) -> FastAPI:
             return Response(status_code=404)
         return {'provenance':getattr(demo,'provenance',{}),'start_s':getattr(demo,'session_start_s',None),
                 'end_s':getattr(demo,'session_end_s',None),'runtime_session_id':demo.pipeline.session_id,
+                'input_source':getattr(demo,'input_source','camera'),
                 'unfinished_annotation':getattr(demo,'open_annotation',None) is not None,
                 'annotation_clock':'observer click arrival on server; human reaction delay not measured',
                 'scope':'numerical metadata only; no sensor capture timestamp or medical diagnosis'}

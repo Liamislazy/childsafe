@@ -40,7 +40,9 @@ def finalize(folder,features,annotations,metadata):
     m.update(start_s=meta['start_s'],end_s=meta['end_s'],runtime_session_id=meta['runtime_session_id'],
              status='complete',metric_definition=METRIC_VERSION,
              features_sha256=file_hash(folder/m['features']),annotations_sha256=file_hash(folder/m['annotations']),
-             annotation_clock=meta.get('annotation_clock','not supplied'))
+             annotation_clock=meta.get('annotation_clock','not supplied'),
+             # Exports from before video mode carry no field and were camera-only.
+             input_source=meta.get('input_source','camera'))
     manifest_path.write_text(json.dumps(m,indent=2),encoding='utf8')
     return folder
 

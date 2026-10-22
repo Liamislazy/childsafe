@@ -35,6 +35,22 @@ Hàng đợi một slot ưu tiên ảnh mới, log số lần slot bị ghi đè
 kiểm tra trước inference và trước xuất bằng chứng; frame hết hạn không tăng dwell.
 Nguy cơ cũ chỉ được giữ ngắn theo cấu hình, sau đó kết thúc do mất quan sát.
 
+## Chạy demo bằng file video
+
+Trong web demo, tick ô xác nhận "chỉ có người lớn đã đồng ý hoặc búp bê" rồi bấm
+**Chạy video** và chọn file (MP4 H.264 hoặc WebM; trình duyệt không phát được thì
+báo lỗi). Trình duyệt tự đọc file trên máy và phát **theo thời gian thực**, gửi
+từng ảnh qua đúng đường xử lý của camera (cùng lease, giới hạn tuổi ảnh, dwell và
+`max_gap_s`). File video không được tải lên server và không bị ghi ra đĩa; frame
+lớn hơn 1280 px được thu nhỏ về 1280 px như camera. Ảnh video không bị lật gương.
+Video hết thì phiên tự kết thúc. Máy chậm sẽ bỏ qua frame giống khi dùng camera.
+
+`session.json` và manifest sau `finalize_session.py` ghi `input_source`
+(`camera` hoặc `video_file`). Video quay lại có thể đã dùng để train detector
+hoặc chỉnh cấu hình. Báo cáo kết quả video tách khỏi kết quả camera trực tiếp và
+không dùng video đã train làm test. Vẫn không dùng video trẻ em thật; ô xác nhận
+không kiểm tra được nội dung file, người chạy demo chịu trách nhiệm.
+
 ## Chuẩn bị một phiên dev/test
 
 Chỉ thử với người lớn đồng ý hoặc ma-nơ-canh, đạo cụ tù/lớn và không đưa vật vào

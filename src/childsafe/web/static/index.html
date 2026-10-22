@@ -31,7 +31,7 @@
   .stage { position: relative; width: 100%; background: #000; border-radius: 10px; overflow: hidden;
            aspect-ratio: 4 / 3; }
   .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
-  .stage video { transform: scaleX(-1); }
+  .stage video.mirror { transform: scaleX(-1); }
   .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: 12px; }
   .controls label { color: var(--muted); font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
   select, input[type=range] { accent-color: var(--accent); }
@@ -75,9 +75,12 @@
   <p class="note">Theo dõi từng người, tay, miệng và mask vật. Tay hoặc vùng vật nghi ngờ sát miệng có thể tạo cảnh giác. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
   <section id="live" class="grid">
     <div class="card">
-      <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+      <div class="stage"><video id="video" class="mirror" playsinline muted></video><canvas id="overlay"></canvas></div>
       <div class="controls">
         <button id="startBtn" class="btn">Bật camera</button>
+        <button id="videoBtn" class="btn ghost" disabled>Chạy video</button>
+        <input id="videoFile" type="file" accept="video/*" class="hidden">
+        <label><input id="videoConsent" type="checkbox"> Video chỉ có người lớn đã đồng ý hoặc búp bê, không có trẻ em thật</label>
         <button id="resetBtn" class="btn ghost">Đặt lại cảnh báo</button>
         <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
         <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
@@ -101,6 +104,7 @@
         <span id="annotationStatus" class="note"></span>
       </div>
       <div class="note">Khung người có ID; điểm xanh là tay, hồng là miệng; đường vàng là mask vật. Không thấy tay/miệng/vật sẽ được nêu ở bảng trạng thái. Khoảng cách là tỷ lệ trên ảnh, không phải centimet. Số liệu tọa độ/trạng thái giữ trong RAM; tải xuống trước khi Reset hoặc bật phiên camera mới.</div>
+      <div class="note">Chế độ video: trình duyệt tự phát file trên máy này theo thời gian thực và gửi từng ảnh như camera; file video không được tải lên hay lưu. Máy xử lý chậm sẽ bỏ qua frame giống khi dùng camera. Kết quả chạy video lại không thay cho thử camera trực tiếp; số liệu phiên ghi nguồn là video_file.</div>
     </div>
     <div><div id="runtimeStatus" class="card" role="status" aria-live="polite">Camera chưa bật</div><div class="models" id="liveModels"></div></div>
   </section>
@@ -112,10 +116,12 @@ const $ = id => document.getElementById(id);
 let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
 let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
+let sourceKind = 'camera', videoURL = '';
 async function cameraClock(renew=false, generation=runToken) {
   const sent = performance.now()/1000;
   const q = new URLSearchParams({client_t:sent});
   if (renew) q.set('token',cameraToken);
+  else q.set('source',sourceKind === 'video' ? 'video_file' : 'camera');
   const response = await fetch('/api/camera/'+(renew?'renew':'start')+'?'+q,{method:'POST'});
   const received = performance.now()/1000;
   const data = await response.json();
@@ -147,32 +153,49 @@ async function loadInfo() {
   info = await (await fetch("/api/info")).json();
   for (const sel of [$("kind")])
     for (const k of info.corruptions) sel.insertAdjacentHTML("beforeend", `<option value="${k}">${k.replace("_", " ")}</option>`);
-  $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera để kiểm tra người, tay, miệng và vật.';
+  $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera hoặc chạy video để kiểm tra người, tay, miệng và vật.';
 }
 
 // ---------- live ----------
 const work = document.createElement("canvas");
-async function start() {
+async function start(kind='camera', file=null) {
   if (starting) { stop(); return; }
   if (running) { stop(); return; }
-  starting = true;
-  $('startBtn').textContent='Hủy bật camera';
+  starting = true; sourceKind = kind;
   const generation = ++runToken;
-  let acquired;
+  const v = $("video");
+  v.classList.toggle('mirror', kind === 'camera');   // a file is shown as recorded, a webcam as a mirror
+  $('startBtn').disabled = kind === 'video'; $('videoBtn').disabled = kind === 'camera';
+  if (kind === 'video') {
+    $('videoBtn').textContent = 'Dừng video';
+    // Object URL: the browser reads the file locally; nothing but per-frame JPEGs goes to the server.
+    videoURL = URL.createObjectURL(file);
+    v.srcObject = null; v.loop = false; v.src = videoURL;
+    v.onended = () => { if (generation === runToken) { stop(); $('liveErr').textContent = 'Video đã hết. Tải số liệu phiên trước khi chạy video khác.'; } };
+    $("liveErr").textContent = "";
+  } else {
+    $('startBtn').textContent='Hủy bật camera';
+    let acquired;
+    try {
+      // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
+      acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    } catch (e) { if (generation === runToken) { stop(); $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
+    if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
+    stream = acquired;
+    $("liveErr").textContent = "";
+    for (const track of stream.getVideoTracks()) track.addEventListener('ended',()=>{
+      if (generation !== runToken) return;
+      stop(); $('liveErr').textContent='Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.';
+    });
+    v.srcObject = stream;
+  }
+  // A file starts only once the session clock exists, so its first frames are not skipped.
   try {
-    // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
-    acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-  } catch (e) { if (generation === runToken) { stop(); $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
-  if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
-  stream = acquired;
-  $("liveErr").textContent = "";
-  for (const track of stream.getVideoTracks()) track.addEventListener('ended',()=>{
-    if (generation !== runToken) return;
-    stop(); $('liveErr').textContent='Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.';
-  });
-  $("video").srcObject = stream;
-  try { await $("video").play(); await cameraClock(false,generation); } catch(e) {
-    if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
+    if (kind === 'camera') await v.play();
+    await cameraClock(false,generation);
+    if (kind === 'video') { v.currentTime = 0; await v.play(); }
+  } catch(e) {
+    if (generation === runToken) { stop(); $("liveErr").textContent=(kind === 'video' ? 'Không phát được video (thử MP4 H.264 hoặc WebM): ' : '')+e.message; } return;
   }
   if (generation !== runToken) return;
   sequence = 0; lastMediaFrame = -1;
@@ -182,7 +205,8 @@ async function start() {
   }
   starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
   frames = 0; lastFpsT = performance.now();
-  $("startBtn").textContent = "Tắt camera"; loop(runToken);
+  if (kind === 'camera') $("startBtn").textContent = "Tắt camera";
+  loop(runToken);
 }
 function stop() {
   starting = false;
@@ -190,6 +214,10 @@ function stop() {
   cameraToken = '';
   running = false; runToken++; $("startBtn").textContent = "Bật camera";
   if (stream) stream.getTracks().forEach(t => t.stop());
+  const v = $("video"); v.onended = null;
+  if (videoURL) { v.pause(); v.removeAttribute('src'); v.load(); URL.revokeObjectURL(videoURL); videoURL = ''; }
+  $("videoBtn").textContent = "Chạy video"; $("startBtn").disabled = false;
+  $("videoBtn").disabled = !$("videoConsent").checked;
   const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "Camera đã tắt";
   $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
 }
@@ -203,10 +231,12 @@ async function loop(token) {
   } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
   if (!running || token !== runToken) return;
   const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
-  work.width = v.videoWidth; work.height = v.videoHeight;
+  // Files can be 4K; send at most the 1280 px the camera path asks for, so both modes match.
+  const scale = sourceKind === 'video' ? Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight)) : 1;
+  work.width = Math.round(v.videoWidth * scale); work.height = Math.round(v.videoHeight * scale);
   const wctx = work.getContext("2d");
-  wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
-  wctx.drawImage(v, 0, 0);
+  if (sourceKind === 'camera') wctx.setTransform(-1, 0, 0, 1, work.width, 0); // mirror, so overlay matches what the user sees
+  wctx.drawImage(v, 0, 0, work.width, work.height);
   const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
   if (!running || token !== runToken) return;
   const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value,
@@ -323,7 +353,10 @@ function draw(res) {
 document.addEventListener('visibilitychange',()=>{
   if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
 });
-$("startBtn").onclick = start;
+$("startBtn").onclick = () => start('camera');
+$("videoBtn").onclick = () => (running || starting) ? stop() : $("videoFile").click();
+$("videoFile").onchange = () => { const file = $("videoFile").files[0]; $("videoFile").value = ''; if (file) start('video', file); };
+$("videoConsent").onchange = () => { if (!running && !starting) $("videoBtn").disabled = !$("videoConsent").checked; };
 $("testSound").onclick = async () => {
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume(); beep(1);
