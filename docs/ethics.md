@@ -5,6 +5,9 @@
   and, only with `--log-features`, per-frame numbers (distances, flags). No images, no raw landmarks.
 - Evaluation recordings (`data/recordings/`, git-ignored) only from adult volunteers with written consent covering purpose,
   retention period, and the right to withdraw. Delete recordings after the project; feature CSVs contain no images.
+- Detector training frames (`scripts/own_camera_detector.py capture`, `data/recordings/detector_frames/`, git-ignored):
+  still frames only, adult volunteers or dolls with the same written consent (it must name training as a purpose),
+  participant codes instead of names. Delete with the other recordings after the project.
 - No cloud VLM / API on frames that contain faces.
 - The system does **not** replace adult supervision. Worst failure mode: a missed danger (false negative), e.g. when the
   object is occluded, the lighting is poor, or the child is outside the camera view. Say this in the report and in the demo.
