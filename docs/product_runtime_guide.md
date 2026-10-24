@@ -15,8 +15,9 @@ Mở `http://127.0.0.1:8000`, chọn **Bật camera**. Một tab sở hữu phi�
 tab khác không được trộn frame hoặc reset phiên đó. Camera/micro không tự bật
 khi mở trang; đợt này không thu âm. Ảnh trong RAM, không ghi video.
 
-Launcher chọn checkpoint local đầu tiên tồn tại. Checkout này có robust + other,
-không có checkpoint full-data được launcher ưu tiên. `/api/info` cho biết model
+Launcher chọn checkpoint local đầu tiên tồn tại. Mặc định là MobileNetV3-Large
+(10 lớp ChildSUn, chia theo nhóm, không có lớp "other"); robust + other chỉ còn là
+dự phòng khi thiếu checkpoint MobileNet. `/api/info` cho biết model
 thực tế, hash config/classifier/detector và phạm vi kết quả. Model cần đặt local;
 không tự tải khi thiếu. Kết quả NORMAL khi thiếu quan sát có màu xám, không phải safe.
 
