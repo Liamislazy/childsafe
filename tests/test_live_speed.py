@@ -177,6 +177,7 @@ def _first_danger(cfg, object_at):
             return out
     cfg['quality']['min_sharpness'] = 0
     cfg['rules']['hand_crop_fallback'] = False   # isolate the mask path; the fallback is tested separately
+    cfg['rules']['held_sharp_labels'] = []       # knife-in-hand DANGER is tested in test_held_sharp.py
     pipe = FramePipeline(cfg, None, detector=Det(), landmark_factory=_Face, classifier=_unsafe)
     rgb = np.full((160, 160, 3), 140, np.uint8)
     try:

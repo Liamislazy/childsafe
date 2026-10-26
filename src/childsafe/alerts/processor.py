@@ -80,6 +80,8 @@ class AlertProcessor:
         self.last_confirmed_t = None
         self.paused_dwell = 0.
         self.last_classify_t = None
+        self.held_sharp_s = 0.
+        self.prev_held_sharp = False
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -112,6 +114,7 @@ class AlertProcessor:
             self.prev_confirmed = False
             self.last_confirmed_t, self.paused_dwell = None, 0.
             self.obj = None
+            self.held_sharp_s, self.prev_held_sharp = 0., False
         self.last_step_t = t
         quality, quality_reasons = observation(f)
         image_quality, image_reasons = image_observation(f)
@@ -282,13 +285,31 @@ class AlertProcessor:
                 and 0 <= t - self.last_evidence_t <= sc['lost_hold_s'])
         if held and self.last_level > level:
             level, reason = self.last_level, 'recent evidence held; mouth/object not observable'
+        # Held sharp object (rules.held_sharp_*): a knife or scissors YOLO links to this person's hand
+        # is DANGER wherever the hand is, no mouth proximity needed. Only confident detections that
+        # persist over observed frames count; a weaker one raises CAUTION.
+        sharp_label = (f.get('held_sharp_label', '') if modern and valid
+                       and not f.get('association_ambiguous', False) else '')
+        if sharp_label and f.get('held_sharp_confident', False):
+            if self.prev_held_sharp and gap_ok:
+                self.held_sharp_s += dt
+            self.prev_held_sharp = True
+        else:
+            self.held_sharp_s, self.prev_held_sharp = 0., False
+        sharp_in_hand = False
+        if sharp_label:
+            if f.get('held_sharp_confident', False) and self.held_sharp_s >= rc.get('held_sharp_danger_s', .2):
+                level, reason, sharp_in_hand = DANGER, f'{sharp_label} held in hand', True
+            elif level < CAUTION:
+                level, reason = CAUTION, f'possible {sharp_label} in hand'
         end_reason = ''
         if self.event_active and not held:
             if not f.get('source_ok', True):
                 end_reason = 'source_disconnected'
             elif f.get('person_left', False):
                 end_reason = 'person_left_frame'
-            elif not visible or f.get('association_ambiguous', False) or (self.event_reliable and missing_evidence):
+            elif not sharp_in_hand and (not visible or f.get('association_ambiguous', False)
+                                        or (self.event_reliable and missing_evidence)):
                 end_reason = 'observation_lost'
             elif level == NORMAL:
                 end_reason = 'observed_departure' if not _isnan(d_raw) and d_raw > tc['d_exit'] else 'risk_changed'

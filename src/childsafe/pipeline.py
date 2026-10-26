@@ -311,6 +311,16 @@ class FramePipeline:
             if state['error']:
                 f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
+            # Knife/scissors linked to this person's hand (rules.held_sharp_*): the processor raises
+            # DANGER for a confident one wherever the hand is. Ambiguous ownership never counts.
+            rules = self.cfg.get('rules', {})
+            sharp = max((d for d in objects if d.label in rules.get('held_sharp_labels', [])),
+                        key=lambda d: d.confidence, default=None)
+            if sharp is None or pid in ambiguous:
+                f.update(held_sharp_label='', held_sharp_conf=math.nan, held_sharp_confident=False)
+            else:
+                f.update(held_sharp_label=sharp.label, held_sharp_conf=sharp.confidence,
+                         held_sharp_confident=sharp.confidence >= rules.get('held_sharp_min_conf', .6))
             obj, proximity = None, None
             if objects:
                 # Select by visible mask proximity, so a long object's tip is not missed.

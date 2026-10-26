@@ -121,7 +121,8 @@ cascade:                    # D2
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 hazard_policy:
-  # Explicit scope for high alerts: visible held sharp objects near the mouth in 2D.
+  # Explicit scope for high alerts: visible held sharp objects near the mouth in 2D, plus a knife or
+  # scissors held in a hand anywhere (rules.held_sharp_*).
   # Toy/fruit/spoon labels do not establish suitability, size or absence of fragments.
   # Socket/heater categories require different contextual detectors, not mouth rules.
   mouth_hazards: {knife: sharp_object, fork: pointed_object, scissors: sharp_object}
@@ -136,6 +137,13 @@ rules:                      # D3
   hand_crop_fallback: true
   caution_hold_s: 1.5       # keep CAUTION through flickering evidence unless a departure is observed. UNTUNED
   hand_crop_min_p_unsafe: 0.8
+  # A knife or scissors that YOLO links to a person's hand is DANGER wherever the hand is; no mouth
+  # proximity needed (product decision 2026-10-26). Uses YOLO's COCO label, not the classifier.
+  # Confident detections only (same 0.6 as quality.min_mask_conf), held over observed frames for
+  # held_sharp_danger_s; a weaker detection raises CAUTION. UNTUNED.
+  held_sharp_labels: [knife, scissors]
+  held_sharp_min_conf: 0.6
+  held_sharp_danger_s: 0.2
 
 runtime:
   cpu_threads: 0            # keep library defaults; optional measured CPU budget (training unaffected)
