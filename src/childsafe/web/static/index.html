@@ -274,6 +274,15 @@ function stableLabel(key, label, now, used, box = null) {
 }
 const pruneLabels = now => { labelTracks = labelTracks.filter(tr => now - tr.last <= LABEL_WINDOW_MS); };
 
+// COCO labels for kinds of object the 10-class ChildSUn classifier was trained on. For any other YOLO
+// label (pen, phone, cup...) the classifier can only force one of its 10 classes (a pen came out as
+// "ball"), so the held object is named with YOLO's label instead. No YOLO label (hand-crop
+// evidence) keeps the classifier's name.
+const CLASSIFIER_KINDS = new Set(['knife', 'fork', 'spoon', 'scissors', 'sports ball', 'teddy bear',
+                                  'apple', 'banana', 'orange']);
+const heldName = (classifierName, yoloLabel) =>
+  !yoloLabel || CLASSIFIER_KINDS.has(yoloLabel) ? classifierName : yoloLabel;
+
 function renderRuntime(res) {
   const names = ['CHƯA GHI NHẬN NGUY CƠ', 'CẦN CHÚ Ý', 'NGUY CƠ CAO'];
   const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
@@ -296,7 +305,7 @@ function renderRuntime(res) {
   for (const person of res.people) {
     // Missing values vote too, so a single missed frame does not blank the line.
     const objectName = stableLabel('object'+person.track_id,
-      person.object_localized ? (person.object || 'chưa rõ loại') : 'chưa có', now, used);
+      person.object_localized ? heldName(person.object || 'chưa rõ loại', person.yolo_label) : 'chưa có', now, used);
     const yoloGuess = stableLabel('yolo'+person.track_id, person.object_localized ? person.yolo_label : '', now, used);
     const [className, classStatus] = stableLabel('class'+person.track_id,
       (person.class || 'chưa có')+'|'+person.status, now, used).split('|');
@@ -349,12 +358,12 @@ function draw(res) {
   if (person.mouth) { const [x, y] = P(person.mouth); ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
   if (person.box) { const [x,y]=P(person.box); ctx.fillStyle='#ffffff'; ctx.fillText('ID '+person.id,x,y+15); }
   }
-  // The object held by a person is labelled with our classifier's name; other boxes keep YOLO's
-  // COCO guess (the person card still shows that guess for the held object too). Both are smoothed
-  // over the last second by stableLabel.
+  // The object held by a person is labelled with our classifier's name when YOLO sees a kind of
+  // object the classifier knows (heldName), else with YOLO's label; other boxes keep YOLO's COCO
+  // guess. All are smoothed by stableLabel.
   const iou = boxIou, now = performance.now(), used = new Set();
   const held = res.people.filter(p => p.object_box && p.class);
-  const named = p => p.class + (p.status === 'uncertain' ? ' (chưa chắc)' : '');
+  const named = (p, yoloLabel) => heldName(p.class + (p.status === 'uncertain' ? ' (chưa chắc)' : ''), yoloLabel);
   const box = (b, text, color) => {
     const [a, c] = [P(b), P([b[2], b[3]])];
     ctx.strokeStyle='#f0a92b'; ctx.lineWidth=2; ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
@@ -362,14 +371,14 @@ function draw(res) {
   };
   for (const object of res.objects) {
     const owner = held.find(p => iou(p.object_box, object.box) > .8);
-    box(object.box, owner ? stableLabel('held', named(owner), now, used, object.box)
+    box(object.box, owner ? stableLabel('held', named(owner, object.label), now, used, object.box)
                           : 'YOLO: '+stableLabel('yolo', object.label, now, used, object.box),
         owner ? '#ffffff' : '#f0a92b');
     if (object.mask.length) { ctx.beginPath(); object.mask.forEach((point,i)=>{ const [x,y]=P(point); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.closePath(); ctx.stroke(); }
   }
   // Held objects found only by the zoomed hand/mouth pass are not in res.objects.
   for (const p of held) if (!res.objects.some(o => iou(p.object_box, o.box) > .8))
-    box(p.object_box, stableLabel('held', named(p), now, used, p.object_box), '#ffffff');
+    box(p.object_box, stableLabel('held', named(p, p.yolo_label), now, used, p.object_box), '#ffffff');
   pruneLabels(now);
 }
 
