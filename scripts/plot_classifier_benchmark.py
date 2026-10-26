@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """Hình 2: accuracy on the leak-free test split vs single-thread CPU latency (log x), from benchmark_classifiers.py
-output. Emphasis form: EfficientNet-B0 in the accent blue as one point with min-max bars over its runs (accuracy
-over the seeds; CPU time over every EfficientNet-B0 checkpoint, which shares one architecture), other models in gray
-with direct labels.
+output. Emphasis form: the live model (MobileNetV3-Large) in the accent blue, other models in gray with direct
+labels. EfficientNet-B0 is one point: mean accuracy over the seeds, median CPU time over every EfficientNet-B0
+checkpoint (they share one architecture).
 
     python scripts/plot_classifier_benchmark.py OUT.png benchmark.json [more.json ...]
 """
@@ -38,9 +38,8 @@ for name, off in OTHERS.items():
 lat = [m["latency_cpu_1thread_ms"] for m in same_arch]
 acc = [100 * m["accuracy"] for m in seeds]
 x, y = statistics.median(lat), statistics.mean(acc)
-ax.errorbar([x], [y], xerr=[[x - min(lat)], [max(lat) - x]], yerr=[[y - min(acc)], [max(acc) - y]],
-            fmt="o", color=MUTED, ms=7, mec=SURFACE, mew=1.5, elinewidth=1.2, capsize=3, zorder=3)
-ax.annotate(f"EfficientNet-B0 ({len(seeds)} seed)", (x, y), xytext=(-104, -16),
+ax.scatter([x], [y], s=48, color=MUTED, zorder=3, edgecolors=SURFACE, linewidths=1.5)
+ax.annotate(f"EfficientNet-B0 ({len(seeds)} seed)", (x, y), xytext=(-104, -14),
             textcoords="offset points", fontsize=8.5, color=INK2)
 m = models[DEPLOYED]
 xd, yd = m["latency_cpu_1thread_ms"], 100 * m["accuracy"]
