@@ -299,7 +299,7 @@ class FramePipeline:
             lm = scene.people.get(pid)
             f = state['geometry'](lm) if lm is not None else dict(t=t, face_ok=0, hand_ok=0)
             f.update(schema_version=2, person_id=pid, session_id=self.session_id,
-                     history_reset=track.history_reset,
+                     history_reset=track.history_reset, person_reset=track.history_reset,
                      source_ok=source_ok, frame_valid=valid, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s, detector_ok=self.detector.ok,
                      classifier_ok=self.classifier is not None and not state['classifier_error'],
@@ -339,9 +339,9 @@ class FramePipeline:
                              item[0]['candidate_object_d_relative']
                              if math.isfinite(item[0]['candidate_object_d_relative']) else math.inf)
                 if state['object_box'] is not None and not _same_object(state['object_box'], state.get('object_label'), obj):
-                    state['processor'].reset()
+                    state['processor'].reset(keep_held_sharp=True)
                     self._clear_classification(state)
-                    f['history_reset'] = True
+                    f['history_reset'] = f['object_switched'] = True
                     state['mask_evidence'].reset()
                 state['object_box'], state['object_label'] = obj.box, obj.label
                 last = state.get('classified')

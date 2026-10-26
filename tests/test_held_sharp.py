@@ -37,6 +37,24 @@ def test_knife_label_flickering_with_fork_still_reaches_danger():
     assert out['level'] < DANGER
 
 
+def test_switching_held_object_keeps_the_knife_vote_but_a_new_person_does_not():
+    # In a webcam test the held object flipped between the knife and another box every few frames,
+    # each switch resetting history and, before this, the knife vote too.
+    def knife(t, **kw):
+        return far_from_mouth(t, held_sharp_label='scissors', held_sharp_confident=True, **kw)
+    proc = AlertProcessor(load_config())
+    for i in range(4):
+        proc.step(knife(i*.2))
+    switched = proc.step(knife(.8, history_reset=True, object_switched=True))
+    assert switched['level'] == DANGER
+    new_person = proc.step(knife(1.0, history_reset=True, object_switched=True, person_reset=True))
+    assert new_person['level'] < DANGER
+    for i in range(6, 10):
+        proc.step(knife(i*.2))
+    knife_gone = proc.step(far_from_mouth(2.0, history_reset=True, object_switched=True))
+    assert knife_gone['level'] < DANGER
+
+
 def test_weak_or_ambiguous_or_gappy_detection_is_not_danger():
     cfg = load_config()
     weak, ambiguous, gappy = AlertProcessor(cfg), AlertProcessor(cfg), AlertProcessor(cfg)

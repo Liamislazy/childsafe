@@ -61,7 +61,10 @@ class AlertProcessor:
                                if self.c.n_of_m else 0.,tc.get('max_gap_s',.25))
         self.reset()
 
-    def reset(self):
+    def reset(self, keep_held_sharp=False):
+        """keep_held_sharp: same person, the hand switched objects but still holds a knife/scissors.
+        The knife vote survives (the held object flickered between the knife and another box in a
+        webcam test)."""
         self.filter.reset(); self.speed_filter.reset(); self.hyst.reset(); self.vote.reset()
         self.frame = 0
         self.prev_d = self.prev_t = None
@@ -81,7 +84,8 @@ class AlertProcessor:
         self.last_confirmed_t = None
         self.paused_dwell = 0.
         self.last_classify_t = None
-        self.sharp_frames = deque()   # (t, confident knife/scissors label or '') over rules.held_sharp_window_s
+        if not keep_held_sharp or not hasattr(self, 'sharp_frames'):
+            self.sharp_frames = deque()   # (t, confident knife/scissors label or '') over rules.held_sharp_window_s
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -101,7 +105,10 @@ class AlertProcessor:
     def step(self, f: dict, obj: dict | None = None) -> dict:
         """f: feature dict from GeometryExtractor; obj: ObjectClassifier output for this frame, if run."""
         if f.get('history_reset', False):
-            self.reset()
+            # Keep the knife vote only when the hand merely switched objects and still holds a knife
+            # or scissors; a knife replaced by a spoon (or a new person) starts from nothing.
+            self.reset(keep_held_sharp=f.get('object_switched', False) and not f.get('person_reset', False)
+                       and not f.get('association_ambiguous', False) and bool(f.get('held_sharp_label')))
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
