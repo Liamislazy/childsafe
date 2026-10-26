@@ -39,6 +39,13 @@ def _nan_to_none(x):
     return None if isinstance(x, float) and (math.isnan(x) or math.isinf(x)) else x
 
 
+def _held_box(pipeline, pid):
+    """Box of the object the pipeline associated with this person (the one the classifier named)."""
+    state = getattr(pipeline, 'states', {}).get(pid)
+    box = state.get('object_box') if state is not None else None
+    return [round(float(v), 1) for v in box] if box is not None else None
+
+
 def _thumb(rgb: np.ndarray, size: int = 160) -> str:
     im = Image.fromarray(rgb)
     im.thumbnail((size, size))
@@ -255,11 +262,12 @@ class RuntimeDemo(Demo):
                 'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
                 'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
                 # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
-                # pen, so a pen comes back as 'toothbrush').
+                # pen, so its 'toothbrush' class is shown as 'pen', see vision.detection).
                 'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'object_localized':bool(features.get('object_present')),
+                'object_box':_held_box(self.pipeline,pid) if features.get('object_present') else None,
                 'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
                 'class': person['obj_class'], 'status': person['obj_status'],
                 'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],

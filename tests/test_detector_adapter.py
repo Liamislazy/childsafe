@@ -29,6 +29,17 @@ def test_adapter_bgr_conversion_and_full_resolution_mask():
     assert adapter.detect(rgb)[0].mask is None
 
 
+def test_coco_toothbrush_is_shown_as_pen_hint():
+    from types import SimpleNamespace
+    box = SimpleNamespace(xyxy=Tensor([[0,0,20,12]]),cls=Tensor(0),conf=Tensor(.9))
+    result = SimpleNamespace(boxes=[box],names={0:'toothbrush'},masks=None)
+    class Model:
+        def predict(self,image,**kwargs): return [result]
+    adapter = SegmentationDetector.__new__(SegmentationDetector)
+    adapter.model,adapter.confidence,adapter.error = Model(),.5,''
+    assert [d.label for d in adapter.detect(np.zeros((12,20,3),np.uint8))] == ['pen']
+
+
 def test_inference_failure_returns_explicit_limited_mode():
     class Broken:
         def predict(self,*a,**kw): raise RuntimeError('private source text')

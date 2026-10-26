@@ -22,6 +22,8 @@ thực tế, hash config/classifier/detector và phạm vi kết quả. Model c�
 không tự tải khi thiếu. Kết quả NORMAL khi thiếu quan sát có màu xám, không phải safe.
 Khi chưa có nguy cơ và ảnh không cho thấy rõ miệng (`image_observation=unobservable`),
 thẻ người hiện thanh xám **KHÔNG KẾT LUẬN · camera không nhìn rõ** thay cho NORMAL.
+Nhãn YOLO `pen` là lớp `toothbrush` của COCO được đổi tên (COCO không có lớp bút); đây
+không phải detector bút và nĩa hay vật mảnh khác cũng có thể hiện nhãn này.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/stop_web_demo.ps1

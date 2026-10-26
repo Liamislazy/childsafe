@@ -5,6 +5,10 @@ import hashlib
 
 import numpy as np
 
+# COCO has no pen class; a held pen comes back as 'toothbrush'. Show that class as 'pen'. It is a
+# renamed COCO class, not a trained pen detector: forks and other thin objects can land here too.
+LABEL_ALIASES = {'toothbrush': 'pen'}
+
 
 @dataclass
 class Detection:
@@ -80,6 +84,7 @@ class SegmentationDetector:
             detections = []
             for i, box in enumerate(result.boxes):
                 label = result.names[int(box.cls.item())]
+                label = LABEL_ALIASES.get(label, label)
                 score = float(box.conf.item())
                 if score < (person_conf if label == 'person' else object_conf):
                     continue
