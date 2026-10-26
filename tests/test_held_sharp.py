@@ -46,9 +46,17 @@ def test_weak_or_ambiguous_or_gappy_detection_is_not_danger():
         out = ambiguous.step(far_from_mouth(i*.1, held_sharp_label='knife', held_sharp_confident=True,
                                             association_ambiguous=True))
         assert out['level'] < DANGER
-        # Frames further apart than temporal.max_gap_s never accumulate held time.
-        out = gappy.step(far_from_mouth(i*.3, held_sharp_label='knife', held_sharp_confident=True))
+        # Frames further apart than rules.held_sharp_max_gap_s never add up.
+        out = gappy.step(far_from_mouth(i*.7, held_sharp_label='knife', held_sharp_confident=True))
         assert out['level'] < DANGER
+
+
+def test_slow_frames_still_reach_danger():
+    # YOLO11m on the laptop GPU: about 0.3 s between frames, above temporal.max_gap_s.
+    proc = AlertProcessor(load_config())
+    levels = [proc.step(far_from_mouth(i*.3, held_sharp_label='scissors', held_sharp_confident=True))['level']
+              for i in range(4)]
+    assert levels[0] < DANGER and levels[-1] == DANGER
 
 
 class VisibleLandmarks(FakeLandmarks):

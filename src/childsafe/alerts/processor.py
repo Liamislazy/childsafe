@@ -114,7 +114,6 @@ class AlertProcessor:
             self.prev_confirmed = False
             self.last_confirmed_t, self.paused_dwell = None, 0.
             self.obj = None
-            self.sharp_frames.clear()
         self.last_step_t = t
         quality, quality_reasons = observation(f)
         image_quality, image_reasons = image_observation(f)
@@ -292,6 +291,10 @@ class AlertProcessor:
         # held_sharp_danger_s. A weaker detection raises CAUTION.
         sharp_label = (f.get('held_sharp_label', '') if modern and valid
                        and not f.get('association_ambiguous', False) else '')
+        # Its own frame-gap limit: this is not a dwell at the mouth, and with YOLO11m frames arrive
+        # about 0.3 s apart (more than temporal.max_gap_s), which used to clear the vote every frame.
+        if self.sharp_frames and not 0 < t - self.sharp_frames[-1][0] <= rc.get('held_sharp_max_gap_s', .5):
+            self.sharp_frames.clear()
         self.sharp_frames.append((t, sharp_label if f.get('held_sharp_confident', False) else ''))
         while t - self.sharp_frames[0][0] > rc.get('held_sharp_window_s', .6):
             self.sharp_frames.popleft()
