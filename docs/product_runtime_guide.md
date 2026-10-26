@@ -20,6 +20,8 @@ Launcher chọn checkpoint local đầu tiên tồn tại. Mặc định là Mob
 dự phòng khi thiếu checkpoint MobileNet. `/api/info` cho biết model
 thực tế, hash config/classifier/detector và phạm vi kết quả. Model cần đặt local;
 không tự tải khi thiếu. Kết quả NORMAL khi thiếu quan sát có màu xám, không phải safe.
+Khi chưa có nguy cơ và ảnh không cho thấy rõ miệng (`image_observation=unobservable`),
+thẻ người hiện thanh xám **KHÔNG KẾT LUẬN · camera không nhìn rõ** thay cho NORMAL.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/stop_web_demo.ps1

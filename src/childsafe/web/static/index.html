@@ -256,7 +256,11 @@ function renderRuntime(res) {
   status.replaceChildren();
   // Always show the danger level; observation quality is a separate note (it is never "complete"
   // while the camera is uncalibrated, which used to hide NORMAL behind a grey badge).
-  const heading = document.createElement('h3'); heading.textContent = `Mức: ${names[res.level]}`;
+  // Exception: with no risk found and the mouth/image unobservable, say "inconclusive" instead.
+  const inconclusive = p => p.level === 0 && p.image_observation === 'unobservable';
+  const allInconclusive = res.level === 0 && res.people.length > 0 && res.people.every(inconclusive);
+  const heading = document.createElement('h3');
+  heading.textContent = allInconclusive ? 'Mức: KHÔNG KẾT LUẬN' : `Mức: ${names[res.level]}`;
   heading.style.color = res.level === 0 && !res.green ? '#64748b' : colors[res.level]; status.append(heading);
   if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
   const summary = document.createElement('p');
@@ -266,9 +270,11 @@ function renderRuntime(res) {
   for (const person of res.people) {
     const card=document.createElement('div'); card.className='card model';
     const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
-    const level=document.createElement('div'); level.className='level '+person.level_name;
-    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
-    if (person.level===0 && !person.green) level.style.color='#64748b';
+    const unseen = inconclusive(person);
+    const level=document.createElement('div'); level.className='level '+(unseen ? 'limited' : person.level_name);
+    level.textContent=unseen ? 'KHÔNG KẾT LUẬN · camera không nhìn rõ'
+                             : names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
+    if (person.level===0 && !person.green && !unseen) level.style.color='#64748b';
     card.append(level);
     const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
