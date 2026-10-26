@@ -20,8 +20,21 @@ def test_confident_knife_in_hand_is_danger_away_from_mouth():
     levels = [proc.step(far_from_mouth(i*.1, held_sharp_label='knife', held_sharp_conf=.8,
                                        held_sharp_confident=True))['level'] for i in range(4)]
     assert levels[0] < DANGER and levels[-1] == DANGER
-    out = proc.step(far_from_mouth(.4, held_sharp_label='scissors', held_sharp_conf=.8, held_sharp_confident=True))
+    proc = AlertProcessor(load_config())
+    for i in range(4):
+        out = proc.step(far_from_mouth(i*.1, held_sharp_label='scissors', held_sharp_conf=.8, held_sharp_confident=True))
     assert out['level'] == DANGER and out['reason'] == 'scissors held in hand'
+
+
+def test_knife_label_flickering_with_fork_still_reaches_danger():
+    proc = AlertProcessor(load_config())
+    for i in range(8):
+        label = 'knife' if i % 2 == 0 else ''   # YOLO calls the same object 'fork' every other frame
+        out = proc.step(far_from_mouth(i*.1, held_sharp_label=label, held_sharp_confident=bool(label)))
+    assert out['level'] == DANGER and out['reason'] == 'knife held in hand'
+    for i in range(8, 16):                      # knife put down: DANGER ends within the vote window
+        out = proc.step(far_from_mouth(i*.1, held_sharp_label='', held_sharp_confident=False))
+    assert out['level'] < DANGER
 
 
 def test_weak_or_ambiguous_or_gappy_detection_is_not_danger():

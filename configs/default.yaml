@@ -139,11 +139,13 @@ rules:                      # D3
   hand_crop_min_p_unsafe: 0.8
   # A knife or scissors that YOLO links to a person's hand is DANGER wherever the hand is; no mouth
   # proximity needed (product decision 2026-10-26). Uses YOLO's COCO label, not the classifier.
-  # Confident detections only (same 0.6 as quality.min_mask_conf), held over observed frames for
-  # held_sharp_danger_s; a weaker detection raises CAUTION. UNTUNED.
+  # Confident detections only (same 0.6 as quality.min_mask_conf). YOLO's label flickers, so DANGER
+  # is a vote over held_sharp_window_s: >= 2 confident frames, >= half the frames, spanning
+  # held_sharp_danger_s. A weaker detection raises CAUTION. UNTUNED.
   held_sharp_labels: [knife, scissors]
   held_sharp_min_conf: 0.6
   held_sharp_danger_s: 0.2
+  held_sharp_window_s: 0.6
 
 runtime:
   cpu_threads: 0            # keep library defaults; optional measured CPU budget (training unaffected)
