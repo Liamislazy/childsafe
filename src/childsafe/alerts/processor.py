@@ -8,7 +8,7 @@ recorded feature logs without touching video again.
 from __future__ import annotations
 
 import math
-from collections import Counter, deque
+from collections import deque
 from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
@@ -298,11 +298,11 @@ class AlertProcessor:
         hits = [(ts, label) for ts, label in self.sharp_frames if label]
         sharp_in_hand = (len(hits) >= 2 and 2 * len(hits) >= len(self.sharp_frames)
                          and hits[-1][0] - hits[0][0] >= rc.get('held_sharp_danger_s', .2) - 1e-9)
+        # YOLO confuses the two (a held knife came back as 'scissors'), so the reason names both.
         if sharp_in_hand:
-            label = Counter(label for _, label in hits).most_common(1)[0][0]
-            level, reason = DANGER, f'{label} held in hand'
+            level, reason = DANGER, 'knife or scissors held in hand'
         elif sharp_label and level < CAUTION:
-            level, reason = CAUTION, f'possible {sharp_label} in hand'
+            level, reason = CAUTION, 'possible knife or scissors in hand'
         end_reason = ''
         if self.event_active and not held:
             if not f.get('source_ok', True):

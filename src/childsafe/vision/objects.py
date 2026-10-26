@@ -29,6 +29,22 @@ def assign_objects(objects,people,landmarks,max_distance_ratio=1.5):
     return result
 
 
+def sharp_without_hand(objects,people,landmarks,labels,min_conf,min_inside=.5):
+    """A fist around a knife handle often hides the hand from the landmark model (0 of 113 knife
+    frames in one webcam test). A confident knife/scissors no hand claimed goes to the one person
+    whose box holds at least min_inside of it, when that person has no observable hand."""
+    out={}
+    for obj in objects:
+        if obj.label not in labels or obj.confidence<min_conf: continue
+        x0,y0,x1,y1=obj.box; area=max((x1-x0)*(y1-y0),1e-9)
+        inside=[p for p in people if max(0,min(x1,p.box[2])-max(x0,p.box[0]))*
+                max(0,min(y1,p.box[3])-max(y0,p.box[1]))/area>=min_inside]
+        if len(inside)==1:
+            lm=landmarks.get(inside[0].person_id)
+            if lm is None or not len(lm.hands): out.setdefault(inside[0].person_id,[]).append(obj)
+    return out
+
+
 class MaskEvidence:
     def __init__(self,cfg,max_gap_s=.25):
         self.cfg,self.max_gap_s=cfg,max_gap_s

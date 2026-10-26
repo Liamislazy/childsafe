@@ -12,7 +12,7 @@ from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.tracking import PersonTracker, associate_object, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
-from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object
+from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object, sharp_without_hand
 from childsafe.vision.people import detect_person
 from childsafe.runtime.contracts import PersonState
 
@@ -283,6 +283,15 @@ class FramePipeline:
                                    self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
         assigned=assignments.owned
         ambiguous.update(assignments.ambiguous)
+        # No hand found (a fist hides it): a confident knife/scissors mostly inside one person's box
+        # is still that person's held object, for classification and the held-sharp rule.
+        rules = self.cfg.get('rules', {})
+        claimed = {id(d) for objs in assigned.values() for d in objs}
+        for pid, objs in sharp_without_hand([d for d in scene.objects if id(d) not in claimed], active,
+                                            scene.people, set(rules.get('held_sharp_labels', [])),
+                                            rules.get('held_sharp_min_conf', .6)).items():
+            if pid not in ambiguous:
+                assigned[pid].extend(objs)
         outputs, rows = [], []
         active_ids = {p.person_id for p in active}
         for track in active:

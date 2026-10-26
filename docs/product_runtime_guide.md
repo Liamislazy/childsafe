@@ -24,10 +24,15 @@ Khi chưa có nguy cơ và ảnh không cho thấy rõ miệng (`image_observati
 thẻ người hiện thanh xám **KHÔNG KẾT LUẬN · camera không nhìn rõ** thay cho NORMAL.
 Nhãn YOLO `pen` là lớp `toothbrush` của COCO được đổi tên (COCO không có lớp bút); đây
 không phải detector bút và nĩa hay vật mảnh khác cũng có thể hiện nhãn này.
-Dao hoặc kéo mà YOLO gắn với bàn tay một người (độ tin cậy ≥ 0,6, giữ ≥ 0,2 s qua các
-khung liên tiếp) được báo **NGUY CƠ CAO** ở bất kỳ vị trí nào, không cần gần miệng
-(`rules.held_sharp_*`); phát hiện yếu hơn chỉ báo cần chú ý. Dao/kéo nằm trên bàn, không
-thuộc tay ai, không kích hoạt quy tắc này. Ngưỡng chưa hiệu chỉnh.
+Dao hoặc kéo mà YOLO gắn với bàn tay một người (độ tin cậy ≥ 0,6; trong 0,6 s gần nhất có
+ít nhất hai khung và ít nhất một nửa số khung thấy dao/kéo, kéo dài ≥ 0,2 s) được báo
+**NGUY CƠ CAO** ở bất kỳ vị trí nào, không cần gần miệng (`rules.held_sharp_*`); phát hiện
+yếu hơn chỉ báo cần chú ý. YOLO hay nhầm dao với kéo nên lý do ghi "knife or scissors".
+Khi tay nắm cán dao, MediaPipe thường không thấy bàn tay (0/113 khung trong một lần thử
+webcam); lúc đó dao/kéo nằm ít nhất một nửa trong khung của đúng một người không có tay
+quan sát được cũng được tính là đang cầm. Vì vậy dao trên bàn nằm trong khung người, khi
+không thấy tay, cũng có thể bị báo. Dao/kéo nằm ngoài khung người không kích hoạt quy tắc
+này. Ngưỡng chưa hiệu chỉnh.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/stop_web_demo.ps1
