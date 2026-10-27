@@ -29,9 +29,21 @@ open class MonitorService : Service() {
     private val lock = Any()
     private var generation = -1L
     private val main = Handler(Looper.getMainLooper())
+    private val freshness = object: Runnable {
+        override fun run() {
+            if(stopped || !MonitorData.running || generation!=MonitorData.generation.get()) return
+            synchronized(lock) {
+                val now=SystemClock.elapsedRealtime()
+                MonitorData.cameras=MonitorData.cameras.mapValues{(_,old)->old.first to old.second.atTime(now)}
+            }
+            connectionNotice()
+            main.postDelayed(this,500)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
     protected open fun monitorConfig(): DeviceConfig? = SecureConfig(this).load("monitor")
+    protected open fun relayApi(config: DeviceConfig): RelayApi = RelayApi(config.relayUrl,config.certificatePin)
 
     private fun markOffline() {
         synchronized(lock) {
@@ -65,6 +77,7 @@ open class MonitorService : Service() {
         }
         stopped = false
         MonitorData.running = true
+        main.post(freshness)
         worker = Thread({
             try { runMonitor(config) }
             finally {
@@ -72,6 +85,7 @@ open class MonitorService : Service() {
                     if (current==generation && current==MonitorData.generation.get()) {
                         worker=null
                         MonitorData.running=false
+                        main.removeCallbacks(freshness)
                         markOffline()
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf(startId)
@@ -84,7 +98,7 @@ open class MonitorService : Service() {
 
     protected open fun runMonitor(config: DeviceConfig) {
         try {
-            val api = RelayApi(config.relayUrl, config.certificatePin)
+            val api = relayApi(config)
             val key = EventCipher.decode(config.key)
             var cursor = 0L
             var bootstrap = true
@@ -103,6 +117,7 @@ open class MonitorService : Service() {
                         val item = cameras.getJSONObject(i)
                         metadata[item.getString("id")] = item
                     }
+                    var invalidMessage=false
                     synchronized(lock) {
                         states.keys.retainAll(metadata.keys)
                         metadata.forEach { (id, camera) ->
@@ -143,7 +158,7 @@ open class MonitorService : Service() {
                                 }
                             } catch (_: Exception) {
                                 state.disconnected(now) // Authentication/format failure never becomes green.
-                                MonitorData.message = "Không xác thực được dữ liệu của một máy camera"
+                                invalidMessage=true
                             }
                         }
                         MonitorData.cameras = metadata.mapValues { (id, item) -> item.getString("name") to states.getValue(id).view(now) }
@@ -154,10 +169,9 @@ open class MonitorService : Service() {
                         bootstrap = true
                     } else {
                         bootstrap = false
-                        MonitorData.message = "Nhận sự kiện mã hóa; không truyền video"
+                        MonitorData.message = if(invalidMessage) "Không xác thực được dữ liệu của một máy camera" else "Nhận sự kiện mã hóa; không truyền video"
                     }
-                    getSystemService(NotificationManager::class.java).notify(1,notification("ChildSafe · Theo dõi",
-                        if(MonitorData.cameras.values.any{it.second.connection==Connection.FRESH}) "Đang nhận cập nhật từ máy camera" else "Chưa có kết quả camera mới; cần kiểm tra kết nối và góc nhìn",false))
+                    connectionNotice()
                     if (!response.getBoolean("more")) Thread.sleep(1000)
                 } catch (e: InterruptedException) { return }
                 catch (e: Exception) {
@@ -183,6 +197,14 @@ open class MonitorService : Service() {
         manager.createNotificationChannel(alerts)
     }
 
+    private fun connectionNotice() {
+        if(stopped || generation!=MonitorData.generation.get()) return
+        val now=SystemClock.elapsedRealtime()
+        val fresh=MonitorData.cameras.values.any{it.second.atTime(now).connection==Connection.FRESH}
+        getSystemService(NotificationManager::class.java).notify(1,notification("ChildSafe · Theo dõi",
+            if(fresh) "Đang nhận cập nhật từ máy camera" else "Chưa có kết quả camera mới; cần kiểm tra kết nối và góc nhìn",false))
+    }
+
     private fun notification(title: String, text: String, alert: Boolean): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         return Notification.Builder(this, if (alert) "alerts" else "monitor")
@@ -193,6 +215,7 @@ open class MonitorService : Service() {
 
     override fun onDestroy() {
         stopped = true
+        main.removeCallbacks(freshness)
         worker?.interrupt()
         if (MonitorData.generation.compareAndSet(generation, generation + 1)) {
             MonitorData.running = false

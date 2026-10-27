@@ -37,6 +37,9 @@ POCO X7 Pro nhận cảnh báo. Chưa thử trên trẻ hay ca nghẹn; chưa s�
   kết nối tới dịch vụ. Kết quả nạp mô hình đến muộn không bật lại camera đã tắt.
   Máy theo dõi bỏ trạng thái đang chạy khi luồng xử lý kết thúc và cho thử bật
   lại; nguy cơ gần nhất được giữ với trạng thái mất kết nối.
+- Trạng thái dữ liệu mới tự hết hạn độc lập với yêu cầu mạng đang chờ, gồm cả
+  thông báo trạng thái Android. Lỗi xác thực được giữ rõ trên giao diện; không
+  bị câu thông báo nhận dữ liệu thành công ghi đè.
 
 Android là bản chuyển riêng, **chưa chứng minh tương đương toàn bộ Python**.
 Chưa chuyển ROI retry, One Euro và mọi quy tắc phụ. Các kết quả phải báo riêng.
@@ -102,7 +105,12 @@ webcam cục bộ, không nhận camera URL có mật khẩu.
   lỗi mở camera, dừng trong khi nạp, thử bật lại và giữ nguy cơ cũ khi mất kết nối.
   Thay thế mô hình/phần cứng/mạng bằng thành phần thử; chưa kiểm tra tốc độ máy
   thật hoặc khả năng nhận cảnh báo khi Android ngủ.
-- APK debug biên dịch được, chữ ký v2 và checksum trọng số trong test02 đã xác minh. Android API 26+,
+- 12 ca nhận cảnh báo trên API 28/35 qua với HTTP mô phỏng: thực thi đường giải
+  mã tới NotificationManager; kiểm tra sự kiện nguy cơ mới, snapshot cũ, tín hiệu
+  thử, ciphertext bị sửa, dữ liệu hết hạn và trạng thái hết hạn khi HTTP đang chờ.
+  Kênh cảnh báo có cấu hình âm thanh/độ ưu tiên cao; chưa chứng minh máy thật phát
+  được âm báo dưới các cài đặt âm lượng, tiết kiệm pin hay khóa màn hình cụ thể.
+- APK debug test03 biên dịch được, chữ ký v2 và checksum trọng số đã xác minh. Android API 26+,
   đa ABI. Chưa xác nhận trên A03/POCO.
 - Classifier 11 lớp tại `outputs/with_other/runs/efficientnet_b0_group_robust/best.pt`:
   sai lệch logits tối đa khoảng `3.1e-6`, ba đầu vào tổng hợp/CPU Windows.

@@ -12,7 +12,7 @@ import javax.net.ssl.SSLContext
 import javax.net.ssl.X509TrustManager
 
 /** No URL credentials, cleartext fallback, redirect or permissive TLS verifier. */
-class RelayApi(baseUrl: String, certificatePin: String = "") {
+open class RelayApi(baseUrl: String, certificatePin: String = "") {
     private val base = baseUrl.trimEnd('/')
     private val tls: SSLContext?
     init {
@@ -39,7 +39,7 @@ class RelayApi(baseUrl: String, certificatePin: String = "") {
         }
     }
 
-    fun call(method: String, path: String, token: String = "", body: JSONObject? = null): JSONObject {
+    open fun call(method: String, path: String, token: String = "", body: JSONObject? = null): JSONObject {
         require(path.startsWith("/v1/") && !path.contains(".."))
         val c = URL(base + path).openConnection() as HttpsURLConnection
         c.instanceFollowRedirects = false
