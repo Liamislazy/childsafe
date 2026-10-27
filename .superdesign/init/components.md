@@ -1,0 +1,407 @@
+# Components
+Single vanilla HTML page; no imports, component library or existing native Android UI.
+The following complete source contains all inline components and conditional render branches.
+```html
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChildSafe Demo</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --normal: #1f9d55; --caution: #d98a00; --danger: #d33a2c; --accent: #3b6fd8; --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #12151b; --panel: #1b2029; --text: #e7eaf0; --muted: #98a2b3; --line: #2b3240;
+            --normal: #34c374; --caution: #f0a92b; --danger: #ef5b4c; --accent: #6d97f0; --chip: #252c38; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px;
+           align-items: center; flex-wrap: wrap; background: var(--panel); }
+  header h1 { font-size: 17px; margin: 0; }
+  .privacy { color: var(--muted); font-size: 12px; }
+  .tabs { margin-left: auto; display: flex; gap: 4px; }
+  .tabs button { border: 1px solid var(--line); background: var(--panel); color: var(--text);
+                 padding: 6px 14px; border-radius: 8px; cursor: pointer; }
+  .tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { padding: 16px 20px; max-width: 1400px; margin: 0 auto; }
+  .grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .stage { position: relative; width: 100%; background: #000; border-radius: 10px; overflow: hidden;
+           aspect-ratio: 4 / 3; }
+  .stage video, .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .stage video { transform: scaleX(-1); }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: 12px; }
+  .controls label { color: var(--muted); font-size: 12px; display: flex; flex-direction: column; gap: 3px; }
+  select, input[type=range] { accent-color: var(--accent); }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; }
+  .btn { border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; font-weight: 600;
+         background: var(--accent); color: #fff; }
+  .btn.ghost { background: var(--chip); color: var(--text); }
+  .stats { color: var(--muted); font-size: 12px; margin-left: auto; }
+  .models { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; align-content: start; }
+  @media (max-width: 520px) { .models { grid-template-columns: 1fr; } }
+  .model h3 { margin: 0 0 2px; font-size: 14px; }
+  .model .sub { color: var(--muted); font-size: 11px; margin-bottom: 8px; word-break: break-all; }
+  .level { border-radius: 8px; padding: 10px; color: #fff; font-weight: 700; font-size: 18px;
+           text-align: center; letter-spacing: .04em; background: var(--muted); }
+  .level.normal { background: var(--normal); } .level.caution { background: var(--caution); }
+  .level.danger { background: var(--danger); }
+  .level.limited { background: #6b7280; }
+  .reason { min-height: 1.4em; color: var(--muted); font-size: 12px; text-align: center; margin: 4px 0 8px; }
+  .bar { height: 10px; background: var(--chip); border-radius: 6px; overflow: hidden; margin: 4px 0 2px; }
+  .bar > div { height: 100%; width: 0; background: var(--danger); transition: width .15s; }
+  .row { display: flex; justify-content: space-between; font-size: 12px; }
+  .row span:first-child { color: var(--muted); }
+  ol.top { margin: 8px 0 0; padding-left: 18px; font-size: 13px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 11px; background: var(--chip); }
+  .badge.unsafe { background: var(--danger); color: #fff; } .badge.safe { background: var(--normal); color: #fff; }
+  .badge.uncertain { background: var(--caution); color: #fff; }
+  .seen { display: flex; gap: 12px; align-items: center; margin-top: 12px; }
+  .seen img { width: 96px; height: 96px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); background: var(--chip); }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .hidden { display: none; }
+  .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ChildSafe — thử cảnh báo camera</h1>
+  <span class="privacy">Xử lý trên máy này; không ghi video. Chỉ tải ảnh kiểm tra khi bạn bấm.</span>
+</header>
+
+<main>
+  <details class="card" id="productScope">
+    <summary>Phạm vi hỗ trợ và cách đọc cảnh báo</summary>
+    <p id="scopePurpose" class="note">Hỗ trợ người chăm sóc chú ý khi vật cầm tay tiến sát vùng miệng trên ảnh.</p>
+    <p id="scopeObjects" class="note"></p>
+    <p class="note">Không xác nhận tiếp xúc, nuốt hay nghẹn. Quay lưng hoặc che miệng có thể làm bỏ sót. Nguyên mẫu chưa được kiểm chứng để sử dụng thực tế.</p>
+    <p id="activeDetector" class="note"></p>
+  </details>
+  <p class="note">Theo dõi từng người, tay, miệng và vùng vật. Tay gần mặt đơn thuần không tạo cảnh báo; vật nghi ngờ gần miệng cần xuất hiện qua thời gian. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
+  <section id="live" class="grid">
+    <div class="card">
+      <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
+      <div class="controls">
+        <button id="startBtn" class="btn">Bật camera</button>
+        <button id="resetBtn" class="btn ghost">Đặt lại cảnh báo</button>
+        <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
+        <button id="snapshotBtn" class="btn ghost" disabled>Tải ảnh kiểm tra</button>
+        <span id="snapshotStatus" class="note"></span>
+        <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
+        <button id="testSound" class="btn ghost">Thử âm báo</button>
+        <label>Thử giảm chất lượng ảnh
+          <select id="kind"><option value="">Không</option></select></label>
+        <label>Mức độ <span id="sevVal">0</span>
+          <input id="sev" type="range" min="0" max="5" value="0"></label>
+        <span class="stats" id="stats">Camera đã tắt</span>
+      </div>
+      <div id="liveErr" class="err"></div>
+      <div class="controls">
+        <label>Tình huống do người quan sát ghi nhãn
+          <select id="annotationLabel"><option value="non_event">Không có sự kiện nguy cơ</option>
+          <option value="unsafe_mouthing">Đạo cụ nguy hiểm tiến sát vùng miệng</option>
+          <option value="uncertain">Chưa rõ</option></select></label>
+        <button id="annotationStart" class="btn ghost">Đánh dấu bắt đầu</button>
+        <button id="annotationEnd" class="btn ghost">Đánh dấu kết thúc</button>
+        <a class="btn ghost" href="/api/annotations.csv" download="annotations.csv">Tải nhãn độc lập</a>
+        <a class="btn ghost" href="/api/session.json" download="session.json">Tải thông tin phiên</a>
+        <span id="annotationStatus" class="note"></span>
+      </div>
+      <div class="note">Khung người có ID; điểm xanh là tay, hồng là miệng; đường vàng là mask vật. Không thấy tay/miệng/vật sẽ được nêu ở bảng trạng thái. Khoảng cách là tỷ lệ trên ảnh, không phải centimet. Số liệu tọa độ/trạng thái giữ trong RAM; tải xuống trước khi Reset hoặc bật phiên camera mới.</div>
+    </div>
+    <div><div id="runtimeStatus" class="card" role="status" aria-live="polite">Camera chưa bật</div><div class="models" id="liveModels"></div></div>
+  </section>
+
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
+let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
+let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1, latestMediaFrame = -1;
+function observeVideoFrames(v,generation) {
+  if (!v.requestVideoFrameCallback) return;
+  v.requestVideoFrameCallback((_,metadata)=>{
+    if (generation !== runToken) return;
+    latestMediaFrame=metadata.presentedFrames;
+    observeVideoFrames(v,generation);
+  });
+}
+async function cameraClock(renew=false, generation=runToken) {
+  const sent = performance.now()/1000;
+  const q = new URLSearchParams({client_t:sent});
+  if (renew) q.set('token',cameraToken);
+  const response = await fetch('/api/camera/'+(renew?'renew':'start')+'?'+q,{method:'POST'});
+  const received = performance.now()/1000;
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error);
+  if (generation !== runToken) {
+    if (!renew) await fetch('/api/camera/end?'+new URLSearchParams({token:data.token}),{method:'POST'});
+    throw new Error('Phiên camera đã kết thúc');
+  }
+  cameraToken = data.token;
+  const sync = await fetch('/api/camera/sync?'+new URLSearchParams({token:cameraToken,client_t:received}),{method:'POST'});
+  if (!sync.ok) throw new Error((await sync.json()).error);
+  if (generation !== runToken) throw new Error('Phiên camera đã kết thúc');
+  lastSync = performance.now();
+}
+async function nextFrame(v) {
+  if (v.requestVideoFrameCallback) {
+    // Inference may span several camera frames. Use the latest already
+    // presented frame immediately instead of waiting for one more presentation.
+    if (latestMediaFrame > lastMediaFrame) { lastMediaFrame=latestMediaFrame; return true; }
+    const metadata = await new Promise(resolve => v.requestVideoFrameCallback((_,m)=>resolve(m)));
+    if (metadata.presentedFrames <= lastMediaFrame) return false;
+    lastMediaFrame = metadata.presentedFrames;
+  } else {
+    if (v.currentTime <= lastMediaFrame) return false;
+    lastMediaFrame = v.currentTime;
+  }
+  return true;
+}
+const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
+
+async function loadInfo() {
+  info = await (await fetch("/api/info")).json();
+  if (info.product_scope) {
+    $('scopePurpose').textContent=info.product_scope.purpose;
+    $('scopeObjects').textContent='Phạm vi nguy cơ cao: '+info.product_scope.high_alert_names.join(', ')+
+      '. Model bổ sung có lớp: '+(info.product_scope.additional_detector_names.join(', ') || 'chưa nạp')+
+      '. Cần dữ liệu và train thêm: '+info.product_scope.pending_training_names.join(', ')+
+      '. '+info.product_scope.class_limit;
+  }
+  if (info.detector?.file) $('activeDetector').textContent='Detector được chọn: '+info.detector.file+
+    ' · thiết bị yêu cầu: '+info.detector.device+(info.detector.fallback ? ' · đang dùng model thay thế vì model GPU không sẵn sàng.' : '.');
+  for (const sel of [$("kind")])
+    for (const k of info.corruptions) sel.insertAdjacentHTML("beforeend", `<option value="${k}">${k.replace("_", " ")}</option>`);
+  $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera để kiểm tra người, tay, miệng và vật.';
+}
+
+// ---------- live ----------
+const work = document.createElement("canvas");
+async function start() {
+  if (starting) { stop(); return; }
+  if (running) { stop(); return; }
+  starting = true;
+  $('startBtn').textContent='Hủy bật camera';
+  const generation = ++runToken;
+  let acquired;
+  try {
+    // Ask for 720p: distant held objects need the pixels (falls back to what the camera offers).
+    acquired = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+  } catch (e) { if (generation === runToken) { stop(); $("liveErr").textContent = "Không mở được camera: " + e.message; } return; }
+  if (generation !== runToken) { acquired.getTracks().forEach(t=>t.stop()); return; }
+  stream = acquired;
+  $("liveErr").textContent = "";
+  for (const track of stream.getVideoTracks()) track.addEventListener('ended',()=>{
+    if (generation !== runToken) return;
+    stop(); $('liveErr').textContent='Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.';
+  });
+  $("video").srcObject = stream;
+  try { await $("video").play(); await cameraClock(false,generation); } catch(e) {
+    if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
+  }
+  if (generation !== runToken) return;
+  sequence = 0; lastMediaFrame = latestMediaFrame = -1;
+  observeVideoFrames($("video"),generation);
+  if ($('sound').checked) {
+    if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    audioContext.resume().catch(()=>{ $('sound').checked=false; });
+  }
+  starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
+  $('snapshotBtn').disabled=false;
+  frames = 0; lastFpsT = performance.now();
+  $("startBtn").textContent = "Tắt camera"; loop(runToken);
+}
+function stop() {
+  starting = false;
+  if (cameraToken) fetch('/api/camera/end?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  cameraToken = '';
+  running = false; runToken++; $("startBtn").textContent = "Bật camera";
+  $('snapshotBtn').disabled=true;
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "Camera đã tắt";
+  $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
+}
+
+async function loop(token) {
+  if (!running || token !== runToken) return;
+  const v = $("video");
+  try {
+    if (performance.now()-lastSync > 15000) await cameraClock(true,token);
+    if (!await nextFrame(v)) { setTimeout(()=>loop(token),0); return; }
+  } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
+  if (!running || token !== runToken) return;
+  const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
+  work.width = v.videoWidth; work.height = v.videoHeight;
+  const wctx = work.getContext("2d");
+  wctx.setTransform(-1, 0, 0, 1, work.width, 0);          // mirror, so overlay matches what the user sees
+  wctx.drawImage(v, 0, 0);
+  const blob = await new Promise(r => work.toBlob(r, "image/jpeg", 0.85));
+  if (!running || token !== runToken) return;
+  const q = new URLSearchParams({ kind: $("kind").value, severity: $("sev").value,
+                                 token:cameraToken,sequence:++sequence,capture_t:captureT });
+  try {
+    const t0 = performance.now();
+    const response = await fetch("/api/frame?" + q, { method: "POST", body: blob, signal: AbortSignal.timeout(10000) });
+    if (!response.ok) throw new Error('HTTP '+response.status);
+    const res = await response.json();
+    if (!running || token !== runToken) return;
+    if (performance.now()/1000-captureT > info.stale_frame_s) throw new Error('Kết quả ảnh đã cũ; đang lấy ảnh mới');
+    $("liveErr").textContent = "";
+    lastReply = performance.now();
+    draw(res);
+    renderRuntime(res);
+    if ($("sound").checked && res.level > 0 && (res.level > lastLevel || res.notify || performance.now()-lastBeep > 3000)) beep(res.level);
+    lastLevel = res.level;
+    frames++;
+    const now = performance.now();
+    if (now - lastFpsT > 1000) {
+      const gap = res.frame_gap_ms != null ? ` · frame gap ${res.frame_gap_ms.toFixed(0)}/${res.max_gap_ms.toFixed(0)} ms` : '';
+      $("stats").textContent = `Phiên ${res.runtime_session_id} · t=${res.t.toFixed(2)}s · ${(frames * 1000 / (now - lastFpsT)).toFixed(1)} fps · xử lý ${res.ms} ms · vòng gửi/nhận ${(now - t0).toFixed(0)} ms${gap}`;
+      $("stats").style.color = res.frame_gap_ms > res.max_gap_ms ? 'var(--danger)' : '';
+      frames = 0; lastFpsT = now;
+    }
+  } catch (e) {
+    if (!running || token !== runToken) return;
+    $("liveErr").textContent = "Chưa có kết quả mới: " + e.message;
+    $('runtimeStatus').textContent='Thiếu dữ liệu quan sát; đang lấy ảnh mới.';
+    $('liveModels').replaceChildren();
+    $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
+  }
+  // Camera frames already pace nextFrame(). An extra rendering callback can
+  // throttle inference when the browser deprioritizes painting this panel.
+  setTimeout(() => loop(token),0);
+}
+
+function beep(level) {
+  if (!audioContext || audioContext.state !== 'running') return;
+  const oscillator = audioContext.createOscillator(), gain = audioContext.createGain();
+  oscillator.frequency.value = level === 2 ? 880 : 520;
+  gain.gain.value = .08; oscillator.connect(gain); gain.connect(audioContext.destination);
+  oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
+}
+
+async function downloadSnapshot() {
+  const v=$('video'),generation=runToken;
+  if (!running || !v.videoWidth || !v.videoHeight) return;
+  const canvas=document.createElement('canvas'); canvas.width=v.videoWidth; canvas.height=v.videoHeight;
+  const context=canvas.getContext('2d',{alpha:false});
+  context.setTransform(-1,0,0,1,canvas.width,0); context.drawImage(v,0,0);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if (!blob || !running || generation!==runToken) return;
+  // Explicit user click only. No overlay/predicted labels, upload, automatic
+  // recording or use of this frame as training ground truth.
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=`childsafe_frame_${Date.now()}.png`;
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+  $('snapshotStatus').textContent='Đã tải ảnh camera nguyên khung; bạn tự kiểm tra và gán nhãn.';
+}
+function renderRuntime(res) {
+  const names = ['CHƯA GHI NHẬN NGUY CƠ', 'CẦN CHÚ Ý', 'NGUY CƠ CAO'];
+  const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
+  const status = $('runtimeStatus');
+  status.replaceChildren();
+  // Always show the danger level; observation quality is a separate note (it is never "complete"
+  // while the camera is uncalibrated, which used to hide NORMAL behind a grey badge).
+  const heading = document.createElement('h3'); heading.textContent = `Mức: ${names[res.level]}`;
+  heading.style.color = res.level === 0 && !res.green ? '#64748b' : colors[res.level]; status.append(heading);
+  if (res.caregiver_action) { const action=document.createElement('p'); action.textContent=res.caregiver_action; status.append(action); }
+  if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
+  const summary = document.createElement('p');
+  summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
+  for (const message of [...res.limitations, res.reason].filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; status.append(p); }
+  $('liveModels').replaceChildren();
+  for (const person of res.people) {
+    const card=document.createElement('div'); card.className='card model';
+    const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
+    const level=document.createElement('div'); level.className='level '+person.level_name;
+    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
+    if (person.level===0 && !person.green) { level.style.color='#cbd5e1'; level.style.background='#334155'; }
+    card.append(level);
+    const messages = [person.caregiver_action, `Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
+      `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
+      `Vật định vị: ${person.object_localized ? (person.object || 'chưa rõ loại') : 'chưa có'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
+      `Vị trí nghi ngờ lấy từ: ${{mask:'vùng mask',box:'hộp vật — chỉ cảnh giác'}[person.candidate_localization] || 'chưa đo được'}${person.hand_roi_attempted ? ' · Tìm tay vùng nhỏ: '+(person.hand_roi_error ? 'gặp lỗi' : person.hand_roi_found+' tay') : ''}`,
+      `Phân loại: ${person.class || 'chưa có'} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[person.status] || person.status})`,
+      `Nguồn đánh giá loại nguy cơ: ${{detector:'detector độc lập với classifier',classifier:'classifier',conflict:'hai model khác nhau — chỉ cảnh giác',none:'chưa đủ'}[person.hazard_source] || 'chưa đủ'} · Điểm detector: ${person.object_confidence == null ? '—' : person.object_confidence.toFixed(2)} (không phải xác suất nguy hiểm)`,
+      `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
+      `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
+      `Khoảng cách dùng cho cảnh báo: ${{object:'vật',hand:'tay (legacy)',none:'chưa có bằng chứng vị trí vật'}[person.d_source] || 'chưa rõ'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      person.reason, ...person.reasons];
+    for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
+    $('liveModels').append(card);
+  }
+}
+setInterval(() => {
+  if (running && performance.now()-lastReply > 1500) {
+    $('runtimeStatus').textContent='Chưa nhận được kết quả mới — không dùng trạng thái cũ để kết luận an toàn.';
+    $('liveModels').replaceChildren();
+    $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
+  }
+},500);
+
+function draw(res) {
+  const cv = $("overlay"), st = cv.parentElement.getBoundingClientRect();
+  cv.width = st.width; cv.height = st.height;
+  const ctx = cv.getContext("2d");
+  // map image coords -> displayed (object-fit: contain)
+  const s = Math.min(st.width / res.width, st.height / res.height);
+  const ox = (st.width - res.width * s) / 2, oy = (st.height - res.height * s) / 2;
+  const P = ([x, y]) => [ox + x * s, oy + y * s];
+  const worst = res.level;
+  const css = LEVEL_COLOR();
+  const col = worst===0 && !res.green ? '#9aa8ba' : css.getPropertyValue(["--normal", "--caution", "--danger"][worst]).trim();
+  ctx.lineWidth = 3; ctx.strokeStyle = col; ctx.strokeRect(2, 2, st.width - 4, st.height - 4);
+  for (const person of res.people) {
+  if (person.box) { const [a, b] = [P([person.box[0], person.box[1]]), P([person.box[2], person.box[3]])];
+                 ctx.setLineDash([6, 4]); ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5;
+                 ctx.strokeRect(a[0], a[1], b[0] - a[0], b[1] - a[1]); ctx.setLineDash([]); }
+  ctx.fillStyle = "#4fd1ff";
+  for (const hand of person.hands) for (const p of hand) { const [x, y] = P(p); ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
+  if (person.mouth) { const [x, y] = P(person.mouth); ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
+  if (person.box) { const [x,y]=P(person.box); ctx.fillStyle='#ffffff'; ctx.fillText('ID '+person.id,x,y+15); }
+  }
+  for (const object of res.objects) {
+    ctx.strokeStyle='#f0a92b'; ctx.fillStyle='#f0a92b'; ctx.lineWidth=2;
+    const [a,b]=[P(object.box),P([object.box[2],object.box[3]])]; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.fillText('YOLO: '+object.label,a[0],a[1]-5);
+    if (object.mask.length) { ctx.beginPath(); object.mask.forEach((point,i)=>{ const [x,y]=P(point); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.closePath(); ctx.stroke(); }
+  }
+}
+
+
+// ---------- wiring ----------
+document.addEventListener('visibilitychange',()=>{
+  if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
+});
+$("startBtn").onclick = start;
+$('snapshotBtn').onclick=downloadSnapshot;
+$("testSound").onclick = async () => {
+  if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  await audioContext.resume(); beep(1);
+};
+$("resetBtn").onclick = async () => {
+  const response = await fetch('/api/reset?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
+  if (!response.ok) $("liveErr").textContent=(await response.json()).error;
+};
+for (const action of ['start','end']) {
+  $('annotation'+(action==='start'?'Start':'End')).onclick=async()=>{
+    const response=await fetch('/api/annotation?'+new URLSearchParams({token:cameraToken,action,label:$('annotationLabel').value}),{method:'POST'});
+    const result=await response.json();
+    $('annotationStatus').textContent=response.ok ? `${action==='start'?'Bắt đầu':'Kết thúc'}: t=${result.t.toFixed(2)}s` : result.error;
+  };
+}
+$("sev").oninput = () => $("sevVal").textContent = $("sev").value;
+loadInfo();
+</script>
+</body>
+</html>
+
+```

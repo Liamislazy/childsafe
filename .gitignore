@@ -27,6 +27,7 @@ data/detector/
 data/supplement/
 .superdesign/tmp/
 android/.gradle/
+android/.kotlin/
 android/**/build/
 android/local.properties
 android/app/google-services.json

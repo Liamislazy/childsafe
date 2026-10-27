@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "targets": {
+    "android-monitor": {
+      "targetKind": "new-ui",
+      "projectId": "8193203f-ac04-416d-903d-a48098076e82",
+      "activeDraftId": "c1fd1aa6-2ee4-4590-8616-95a8a11e384a",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        ".superdesign/init/theme.md"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b5d3c4cc07715290bae9164835287467541ebe5325a3e041cefef0260b726deb",
+        ".superdesign/init/theme.md": "5d4586ea0361aa977a402751584f5ad73f28689043dc7bf6e068fe6930472786"
+      },
+      "components": [],
+      "drafts": {
+        "c1fd1aa6-2ee4-4590-8616-95a8a11e384a": {
+          "title": "ChildSafe Android Monitor Dashboard",
+          "visualDirection": "native mobile light theme; local copy corrects unsupported movement wording",
+          "currentVersion": 1
+        }
+      },
+      "updatedAt": "2026-10-27T07:28:20.454756+00:00"
+    }
+  }
+}
