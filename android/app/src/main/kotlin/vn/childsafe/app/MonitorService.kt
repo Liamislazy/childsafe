@@ -9,6 +9,8 @@ import android.content.Intent
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import org.json.JSONObject
 import vn.childsafe.core.*
@@ -20,14 +22,26 @@ object MonitorData {
     @Volatile var running = false
 }
 
-class MonitorService : Service() {
+open class MonitorService : Service() {
     private var worker: Thread? = null
     @Volatile private var stopped = false
     private val states = java.util.concurrent.ConcurrentHashMap<String, MonitorState>()
     private val lock = Any()
     private var generation = -1L
+    private val main = Handler(Looper.getMainLooper())
 
     override fun onBind(intent: Intent?): IBinder? = null
+    protected open fun monitorConfig(): DeviceConfig? = SecureConfig(this).load("monitor")
+
+    private fun markOffline() {
+        synchronized(lock) {
+            val now = SystemClock.elapsedRealtime()
+            MonitorData.cameras = MonitorData.cameras.mapValues { (id, old) ->
+                old.first to (states[id]?.disconnected(now) ?: old.second.copy(
+                    connection=Connection.OFFLINE, observation=Observation.UNOBSERVABLE, notify=false))
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") { stopSelf(); return START_NOT_STICKY }
@@ -38,16 +52,37 @@ class MonitorService : Service() {
         if (worker != null) return START_NOT_STICKY
         channels()
         startForeground(1, notification("Đang theo dõi", "Chờ dữ liệu mới từ máy camera", false))
-        val config = try { SecureConfig(this).load("monitor") } catch (_: Exception) { null }
-        if (config == null) { MonitorData.message = "Cần ghép đôi lại máy theo dõi"; stopSelf(); return START_NOT_STICKY }
-        stopped = false
         generation = MonitorData.generation.incrementAndGet()
+        val current = generation
+        markOffline()
+        val config = try { monitorConfig() } catch (_: Exception) { null }
+        if (config == null) {
+            MonitorData.running=false
+            MonitorData.message = "Cần ghép đôi lại máy theo dõi"
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf(startId)
+            return START_NOT_STICKY
+        }
+        stopped = false
         MonitorData.running = true
-        worker = Thread({ runMonitor(config) }, "childsafe-monitor").also { it.start() }
+        worker = Thread({
+            try { runMonitor(config) }
+            finally {
+                main.post {
+                    if (current==generation && current==MonitorData.generation.get()) {
+                        worker=null
+                        MonitorData.running=false
+                        markOffline()
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf(startId)
+                    }
+                }
+            }
+        }, "childsafe-monitor").also { it.start() }
         return START_NOT_STICKY // Never silently restart a disabled monitor.
     }
 
-    private fun runMonitor(config: DeviceConfig) {
+    protected open fun runMonitor(config: DeviceConfig) {
         try {
             val api = RelayApi(config.relayUrl, config.certificatePin)
             val key = EventCipher.decode(config.key)
@@ -127,10 +162,7 @@ class MonitorService : Service() {
                 } catch (e: InterruptedException) { return }
                 catch (e: Exception) {
                     if (stopped || generation != MonitorData.generation.get()) return
-                    synchronized(lock) {
-                        val now = SystemClock.elapsedRealtime()
-                        MonitorData.cameras = MonitorData.cameras.mapValues { (id, old) -> old.first to states.getValue(id).disconnected(now) }
-                    }
+                    markOffline()
                     MonitorData.message = if (e is RelayError && e.status == 401) "Quyền truy cập đã hết hoặc bị thu hồi; cần ghép đôi lại" else "Mất kết nối đến dịch vụ truyền cảnh báo"
                     getSystemService(NotificationManager::class.java).notify(1,notification("ChildSafe · Mất kết nối",MonitorData.message,false))
                     try { Thread.sleep(2000) } catch (_: InterruptedException) { return }
@@ -138,7 +170,7 @@ class MonitorService : Service() {
             }
         } catch (_: Exception) {
             MonitorData.message = "Không mở được cấu hình theo dõi; cần ghép đôi lại"
-        } finally { if (generation == MonitorData.generation.get()) MonitorData.running = false }
+        }
     }
 
     private fun channels() {
@@ -164,10 +196,7 @@ class MonitorService : Service() {
         worker?.interrupt()
         if (MonitorData.generation.compareAndSet(generation, generation + 1)) {
             MonitorData.running = false
-            synchronized(lock) {
-                val now = SystemClock.elapsedRealtime()
-                MonitorData.cameras = MonitorData.cameras.mapValues { (id, old) -> old.first to states.getValue(id).disconnected(now) }
-            }
+            markOffline()
         }
         super.onDestroy()
     }

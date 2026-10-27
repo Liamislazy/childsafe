@@ -16,7 +16,6 @@ import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarker
 import org.json.JSONArray
 import org.json.JSONObject
 import vn.childsafe.core.*
-import java.io.Closeable
 import java.io.File
 import java.nio.FloatBuffer
 import java.nio.ByteBuffer
@@ -28,7 +27,7 @@ import kotlin.math.*
 data class VisionOutput(val state: JSONObject,val notify: Boolean,val processingMs: Long,val people: Int,val objects: Int)
 
 /** All inference calls and close() must use the same serial camera executor. */
-class NativeVision(private val context: Context): Closeable {
+class NativeVision(private val context: Context): CameraEngine {
     private val manifest=JSONObject(context.assets.open("models/manifest.json").bufferedReader().use{it.readText()})
     private val config=manifest.getJSONObject("runtime_config")
     private val qc=config.getJSONObject("quality")
@@ -50,7 +49,7 @@ class NativeVision(private val context: Context): Closeable {
     private val classifier: OrtSession
     private val face: FaceLandmarker
     private val hand: HandLandmarker
-    val backend: String
+    override val backend: String
 
     private class History(val gate: CameraRiskGate) {
         var previousMouth: Point?=null; var mouthTime=0L
@@ -246,7 +245,7 @@ class NativeVision(private val context: Context): Closeable {
         cautionMs=(rules.getDouble("caution_evidence_s")*1000).toLong(),dangerMs=(rules.getDouble("dwell_danger_s")*1000).toLong(),
         cooldownMs=(temporal.getDouble("cooldown_s")*1000).toLong(),calibrated=false))
 
-    fun process(bitmap: Bitmap,captured: Long): VisionOutput {
+    override fun process(bitmap: Bitmap,captured: Long): VisionOutput {
         val started=SystemClock.elapsedRealtime()
         if(previousSize!=null && previousSize!=(bitmap.width to bitmap.height)) reset()
         previousSize=bitmap.width to bitmap.height
@@ -364,7 +363,7 @@ class NativeVision(private val context: Context): Closeable {
             }
         } }
     }
-    fun reset() { tracker.reset(); people.clear(); previousSize=null }
+    override fun reset() { tracker.reset(); people.clear(); previousSize=null }
     fun selfCheck(): JSONObject {
         fun input(role: String): FloatArray {
             val j=manifest.getJSONObject(role).getJSONObject("verification")

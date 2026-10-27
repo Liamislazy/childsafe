@@ -6,17 +6,17 @@ import vn.childsafe.core.EventCipher
 import java.util.ArrayDeque
 
 /** Network owns JSON only, never camera frames. Inference never waits for I/O. */
-class CameraPublisher(private val config: DeviceConfig): AutoCloseable {
+class CameraPublisher(private val config: DeviceConfig): CameraEventSink {
     private data class Pending(val state: String,val captured: Long)
     private val lock=Object()
     private val alerts=ArrayDeque<Pending>()
     private var latest: Pending?=null
     @Volatile private var stopped=false
-    @Volatile var error: String=""; private set
+    @Volatile override var error: String=""; private set
     @Volatile var dropped=0; private set
     private val worker=Thread({run()},"childsafe-camera-events")
     init { require(config.role=="camera"); worker.start() }
-    fun submit(state: JSONObject,captured: Long,alert: Boolean) {
+    override fun submit(state: JSONObject,captured: Long,alert: Boolean) {
         val item=Pending(state.toString(),captured)
         synchronized(lock) {
             if(stopped || SystemClock.elapsedRealtime()-captured>=2500) { dropped++; return }

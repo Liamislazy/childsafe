@@ -40,27 +40,28 @@ object CameraData {
     @Volatile var lastResultElapsed=0L
 }
 
-class CameraNodeService: LifecycleService() {
+open class CameraNodeService: LifecycleService() {
     inner class LocalBinder: Binder() { val service get()=this@CameraNodeService }
     private val executor=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
     private val generation=AtomicLong()
     @Volatile private var closed=false
+    private data class Run(val owner: Long)
+    @Volatile private var run: Run?=null
     private var provider: ProcessCameraProvider?=null
     private var analysis: ImageAnalysis?=null
     private var surface: Preview.SurfaceProvider?=null
     private var facing=CameraSelector.LENS_FACING_BACK
-    private var engine: NativeVision?=null
-    private var publisher: CameraPublisher?=null
+    private var engine: CameraEngine?=null
+    private var publisher: CameraEventSink?=null
     @Volatile private var lastFrame=0L
     @Volatile private var lastSent=0L
     @Volatile private var lastRisk="normal"
     @Volatile private var lastTrusted=0L
     private val statusId=UUID.randomUUID().toString()
-    private var ownerEpoch=-1L
     private val watchdog=object:Runnable {
         override fun run() {
-            if(closed) return
+            if(closed || run==null) return
             if(lastFrame>0 && SystemClock.elapsedRealtime()-lastFrame>1500) {
                 CameraData.message="Không nhận được ảnh mới từ camera"
                 emitLimited("Camera không có ảnh mới")
@@ -69,10 +70,16 @@ class CameraNodeService: LifecycleService() {
         }
     }
     override fun onBind(intent: Intent): IBinder { super.onBind(intent);return LocalBinder() }
+    protected open fun cameraConfig(): DeviceConfig? = SecureConfig(this).load("camera")
+    protected open fun createEngine(): CameraEngine = NativeVision(this)
+    protected open fun createPublisher(config: DeviceConfig): CameraEventSink = CameraPublisher(config)
+    protected open fun activateCamera() { bindCamera() }
+    private fun active(value: Run): Boolean = !closed && run==value && CameraData.generation.get()==value.owner
+
     override fun onStartCommand(intent: Intent?,flags: Int,startId: Int): Int {
         super.onStartCommand(intent,flags,startId)
-        if(intent?.action=="STOP") {stopSelf();return START_NOT_STICKY}
-        if(CameraData.running) return START_NOT_STICKY
+        if(intent?.action=="STOP") { stopRuntime("Máy camera đã tắt");return START_NOT_STICKY }
+        if(closed || run!=null) return START_NOT_STICKY
         if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED) {
             CameraData.message="Chưa có quyền camera";stopSelf();return START_NOT_STICKY
         }
@@ -83,29 +90,42 @@ class CameraNodeService: LifecycleService() {
             .setContentTitle("ChildSafe: máy camera đang hoạt động").setContentText("Phân tích trên máy; không ghi video")
             .setContentIntent(open).setOngoing(true).build())
         CameraData.running=true; CameraData.message="Đang kiểm tra và nạp mô hình…"
-        ownerEpoch=CameraData.generation.incrementAndGet()
+        val current=Run(CameraData.generation.incrementAndGet())
+        run=current
+        lastFrame=0;lastSent=0;lastTrusted=0;lastRisk="normal"
+        CameraData.people=0;CameraData.objects=0;CameraData.backend=""
         CameraData.result="";CameraData.lastResultElapsed=0;CameraData.frameCount=0;CameraData.processingMs=0
         executor.execute {
+            var openedPublisher: CameraEventSink?=null
+            var openedEngine: CameraEngine?=null
             try {
-                if(closed) return@execute
-                val config=SecureConfig(this).load("camera")?:error("Camera not paired")
-                publisher=CameraPublisher(config)
-                engine=NativeVision(this)
-                if(closed) return@execute
-                CameraData.backend=engine!!.backend
-                main.post {if(!closed) bindCamera()}
+                if(!active(current)) return@execute
+                val config=cameraConfig()?:error("Camera not paired")
+                openedPublisher=createPublisher(config)
+                openedEngine=createEngine()
+                if(!active(current)) return@execute
+                publisher=openedPublisher;engine=openedEngine
+                openedPublisher=null;openedEngine=null // Ownership transfers to the serial cleanup task.
+                main.post {
+                    if(active(current)) {
+                        CameraData.backend=engine?.backend.orEmpty()
+                        try { activateCamera() }
+                        catch(_:Exception) { stopRuntime("Không mở được camera; hãy kiểm tra camera và thử bật lại") }
+                    }
+                }
             } catch(_:Throwable) {
-                if(closed || ownerEpoch!=CameraData.generation.get()) return@execute
-                CameraData.message="Không mở được mô hình hoặc cấu hình camera; cần kiểm tra gói mô hình và ghép đôi"
-                emitLimited(CameraData.message)
-                main.post {stopSelf()}
+                main.post {
+                    if(active(current)) stopRuntime("Không mở được mô hình hoặc cấu hình camera; cần kiểm tra gói mô hình và ghép đôi")
+                }
+            } finally {
+                try { openedEngine?.close() } finally { openedPublisher?.close() }
             }
         }
         main.post(watchdog)
         return START_NOT_STICKY
     }
-    fun preview(value: Preview.SurfaceProvider?) {surface=value;if(engine!=null && !closed) bindCamera()}
-    fun switchCamera() {facing=if(facing==CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK;bindCamera()}
+    fun preview(value: Preview.SurfaceProvider?) {surface=value;if(engine!=null && run!=null && !closed) bindCamera()}
+    fun switchCamera() {facing=if(facing==CameraSelector.LENS_FACING_BACK) CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK;if(run!=null) bindCamera()}
     fun testNotification() {
         val state=JSONObject().put("event_id",UUID.randomUUID().toString()).put("kind","test")
             .put("captured_at_ms",System.currentTimeMillis()).put("risk","normal").put("observation","unobservable")
@@ -114,15 +134,17 @@ class CameraNodeService: LifecycleService() {
     }
     @Suppress("DEPRECATION")
     private fun bindCamera() {
-        if(closed || engine==null) return
+        val current=run?:return
+        if(!active(current) || engine==null) return
         val epoch=generation.incrementAndGet()
         analysis?.clearAnalyzer();provider?.unbindAll()
         val future=ProcessCameraProvider.getInstance(this)
         executor.execute {
+            if(!active(current)) return@execute
             engine?.reset()
             main.post {
                 future.addListener({
-                    if(closed || epoch!=generation.get()) return@addListener
+                    if(!active(current) || epoch!=generation.get()) return@addListener
                     try {
                         provider=future.get()
                         val selector=CameraSelector.Builder().requireLensFacing(facing).build()
@@ -135,14 +157,14 @@ class CameraNodeService: LifecycleService() {
                             val arrived=SystemClock.elapsedRealtime()
                             lastFrame=arrived
                             try {
-                                if(closed || epoch!=generation.get()) return@setAnalyzer
+                                if(!active(current) || epoch!=generation.get()) return@setAnalyzer
                                 val original=image.toBitmap()
                                 bitmap=if(image.imageInfo.rotationDegrees!=0) {
                                     val matrix=Matrix().apply{postRotate(image.imageInfo.rotationDegrees.toFloat())}
                                     Bitmap.createBitmap(original,0,0,original.width,original.height,matrix,true).also{if(it!==original)original.recycle()}
                                 } else original
                                 val result=engine!!.process(bitmap!!,arrived)
-                                if(closed || epoch!=generation.get()) return@setAnalyzer
+                                if(!active(current) || epoch!=generation.get()) return@setAnalyzer
                                 CameraData.processingMs=SystemClock.elapsedRealtime()-arrived
                                 CameraData.frameCount++
                                 if(CameraData.processingMs>250) {
@@ -158,19 +180,22 @@ class CameraNodeService: LifecycleService() {
                                     if(result.notify || now-lastSent>=1000) { publisher?.submit(result.state,arrived,result.notify);lastSent=now }
                                 }
                             } catch(_:Exception) {
-                                engine?.reset();CameraData.message="Không phân tích được ảnh hiện tại";emitLimited(CameraData.message)
+                                if(active(current)) {
+                                    engine?.reset();CameraData.message="Không phân tích được ảnh hiện tại";emitLimited(CameraData.message)
+                                }
                             } finally {bitmap?.recycle();image.close()}
                         }
                         if(surface!=null) {
                             val preview=Preview.Builder().build().also{it.setSurfaceProvider(surface)}
                             provider!!.bindToLifecycle(this,selector,analyzer,preview)
                         } else provider!!.bindToLifecycle(this,selector,analyzer)
-                    } catch(_:Exception) {CameraData.message="Không mở được camera; có thể đang bị ứng dụng khác sử dụng";emitLimited(CameraData.message)}
+                    } catch(_:Exception) {stopRuntime("Không mở được camera; có thể đang bị ứng dụng khác sử dụng")}
                 },ContextCompat.getMainExecutor(this))
             }
         }
     }
     @Synchronized private fun emitLimited(reason: String) {
+        if(closed || run==null) return
         val now=SystemClock.elapsedRealtime()
         if(now-lastSent<1000) return
         val risk=if(now-lastTrusted<=800) lastRisk else "normal"
@@ -179,12 +204,28 @@ class CameraNodeService: LifecycleService() {
         publisher?.submit(state,now,false);lastSent=now
         CameraData.result=state.toString();CameraData.lastResultElapsed=now
     }
-    override fun onDestroy() {
-        closed=true;generation.incrementAndGet()
-        if(CameraData.generation.compareAndSet(ownerEpoch,ownerEpoch+1)) CameraData.running=false
+    /** Stop even while an Activity still holds a Binder; stopSelf alone does not destroy a bound Service. */
+    private fun stopRuntime(reason: String, stopService: Boolean=true) {
+        val current=run
+        run=null;generation.incrementAndGet()
+        if(current!=null && CameraData.generation.compareAndSet(current.owner,current.owner+1)) {
+            CameraData.running=false;CameraData.message=reason
+            CameraData.lastResultElapsed=0;CameraData.result=""
+            CameraData.people=0;CameraData.objects=0;CameraData.backend=""
+        }
         main.removeCallbacks(watchdog);analysis?.clearAnalyzer();provider?.unbindAll()
+        analysis=null;provider=null
         publisher?.close()
-        executor.execute {engine?.close();engine=null;publisher?.close();publisher=null}
+        executor.execute {
+            try { engine?.close() }
+            finally { engine=null;publisher?.close();publisher=null }
+        }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        if(stopService) stopSelf()
+    }
+    override fun onDestroy() {
+        stopRuntime("Máy camera đã tắt",false)
+        closed=true
         executor.shutdown()
         super.onDestroy()
     }

@@ -33,6 +33,10 @@ POCO X7 Pro nhận cảnh báo. Chưa thử trên trẻ hay ca nghẹn; chưa s�
   bằng mạng, không ghi hình. Webcam thật tới điện thoại chưa được xác minh.
 - Nút thử dùng `kind=test`, không giả phát hiện AI hoặc đổi nguy cơ. Tự kiểm tra
   mô hình bằng tensor tổng hợp; JSON không chứa ảnh, token hoặc địa chỉ relay.
+- Lỗi nạp mô hình/mở camera giải phóng tài nguyên ngay cả khi màn hình còn giữ
+  kết nối tới dịch vụ. Kết quả nạp mô hình đến muộn không bật lại camera đã tắt.
+  Máy theo dõi bỏ trạng thái đang chạy khi luồng xử lý kết thúc và cho thử bật
+  lại; nguy cơ gần nhất được giữ với trạng thái mất kết nối.
 
 Android là bản chuyển riêng, **chưa chứng minh tương đương toàn bộ Python**.
 Chưa chuyển ROI retry, One Euro và mọi quy tắc phụ. Các kết quả phải báo riêng.
@@ -94,6 +98,10 @@ webcam cục bộ, không nhận camera URL có mật khẩu.
   ghép đôi/gửi/giải mã, quyền, hết hạn, hàng đợi và forwarder. Không phải 33 cảnh thật.
 - Bộ Python đầy đủ: 312 qua, 3 bỏ qua. Lõi Kotlin: 30 kiểm thử JVM qua; không phải
   các cảnh quay điện thoại hay kiểm thử toàn bộ giao diện Android.
+- 18 ca vòng đời dịch vụ qua với Robolectric 4.14.1 trên API 28/35: lỗi mô hình,
+  lỗi mở camera, dừng trong khi nạp, thử bật lại và giữ nguy cơ cũ khi mất kết nối.
+  Thay thế mô hình/phần cứng/mạng bằng thành phần thử; chưa kiểm tra tốc độ máy
+  thật hoặc khả năng nhận cảnh báo khi Android ngủ.
 - APK debug biên dịch được, chữ ký v2 và checksum trọng số trong test02 đã xác minh. Android API 26+,
   đa ABI. Chưa xác nhận trên A03/POCO.
 - Classifier 11 lớp tại `outputs/with_other/runs/efficientnet_b0_group_robust/best.pt`:
@@ -115,7 +123,7 @@ người dựng trên máy khác phải tự đồng ý trước khi tải.
 rtk proxy uv pip install --python .venv/Scripts/python.exe -r requirements-android-export.txt
 rtk proxy .venv/Scripts/python.exe scripts/export_android_models.py --checkpoint outputs/with_other/runs/efficientnet_b0_group_robust/best.pt --detector models/yolo11n-seg.pt --detector-size 320 --face models/face_landmarker.task --hand models/hand_landmarker.task --out outputs/android-models-a03
 rtk proxy .venv/Scripts/python.exe scripts/package_android_models.py --source outputs/android-models-a03
-rtk proxy .venv/Scripts/python.exe scripts/android_toolchain.py :core:test :app:assembleDebug
+rtk proxy .venv/Scripts/python.exe scripts/android_toolchain.py :core:test :app:testDebugUnitTest :app:assembleDebug
 ```
 
 ## Việc còn lại
