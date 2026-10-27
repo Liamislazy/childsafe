@@ -74,4 +74,21 @@ class MonitorStateTest {
         assertFalse(snapshot.atTime(2500).green)
         assertEquals(Connection.STALE, snapshot.atTime(8000).connection)
     }
+    @Test fun manualNotificationTestsCannotOverwriteRealDanger() {
+        val s=MonitorState()
+        s.accept(event(),"one",0,0)
+        assertTrue(s.acceptTest("test-1","one",0,1))
+        assertFalse(s.acceptTest("test-1","one",0,2))
+        assertEquals(Risk.DANGER,s.view(2).risk)
+        assertFalse(s.acceptTest("test-2","old",0,3))
+        assertFalse(s.acceptTest("test-3","one",3000,4))
+        assertFalse(s.acceptTest("test-4","one",0,5,bootstrap=true))
+    }
+    @Test fun aDistinctNewDangerEventIsNotHiddenByThePreviousEventsCooldown() {
+        val s=MonitorState()
+        assertTrue(s.accept(event(),"one",0,0).notify)
+        s.accept(event(1,Risk.NORMAL,Observation.OBSERVABLE,alert=false),"one",0,1000)
+        assertTrue(s.accept(event(2),"one",0,2000).notify)
+        assertFalse(s.accept(event(3,id="event-2"),"one",0,2100).notify)
+    }
 }

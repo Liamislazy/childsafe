@@ -33,7 +33,7 @@ class PersonState(BaseModel):
 class CameraState(BaseModel):
     model_config = ConfigDict(extra="forbid")
     event_id: str = Field(min_length=1, max_length=80)
-    kind: Literal["status", "alert"]
+    kind: Literal["status", "alert", "test"]
     captured_at_ms: int = Field(ge=0)
     risk: Literal["normal", "caution", "danger"]
     observation: Literal["observable", "degraded", "unobservable"]

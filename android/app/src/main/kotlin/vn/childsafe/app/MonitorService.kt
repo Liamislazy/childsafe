@@ -89,6 +89,13 @@ class MonitorService : Service() {
                                 val age = serverNow - message.getLong("received_at_ms") + flightBudget
                                 if (serverNow + flightBudget >= e.expiresAtMs || !camera.getBoolean("connected")) continue
                                 val p = JSONObject(EventCipher.open(key, e, config.roomId, id).toString(Charsets.UTF_8))
+                                if(p.getString("kind")=="test") {
+                                    if(state.acceptTest(p.getString("event_id"),e.epoch,age,now,bootstrap)) {
+                                        getSystemService(NotificationManager::class.java).notify(3,notification("ChildSafe · Thử đường cảnh báo",
+                                            "Tín hiệu thử do người dùng gửi; không phải phát hiện nguy cơ.",true))
+                                    }
+                                    continue // Tests never change the real risk or observation state.
+                                }
                                 val observation = Observation.valueOf(p.getString("observation").uppercase())
                                 val value = CameraResult(e.epoch, e.sequence, p.getString("event_id"),
                                     Risk.valueOf(p.getString("risk").uppercase()), observation, p.getString("reason"),
@@ -114,6 +121,8 @@ class MonitorService : Service() {
                         bootstrap = false
                         MonitorData.message = "Nhận sự kiện mã hóa; không truyền video"
                     }
+                    getSystemService(NotificationManager::class.java).notify(1,notification("ChildSafe · Theo dõi",
+                        if(MonitorData.cameras.values.any{it.second.connection==Connection.FRESH}) "Đang nhận cập nhật từ máy camera" else "Chưa có kết quả camera mới; cần kiểm tra kết nối và góc nhìn",false))
                     if (!response.getBoolean("more")) Thread.sleep(1000)
                 } catch (e: InterruptedException) { return }
                 catch (e: Exception) {
@@ -123,6 +132,7 @@ class MonitorService : Service() {
                         MonitorData.cameras = MonitorData.cameras.mapValues { (id, old) -> old.first to states.getValue(id).disconnected(now) }
                     }
                     MonitorData.message = if (e is RelayError && e.status == 401) "Quyền truy cập đã hết hoặc bị thu hồi; cần ghép đôi lại" else "Mất kết nối đến dịch vụ truyền cảnh báo"
+                    getSystemService(NotificationManager::class.java).notify(1,notification("ChildSafe · Mất kết nối",MonitorData.message,false))
                     try { Thread.sleep(2000) } catch (_: InterruptedException) { return }
                 }
             }

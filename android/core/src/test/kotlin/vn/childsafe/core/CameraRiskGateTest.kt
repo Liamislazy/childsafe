@@ -72,4 +72,10 @@ class CameraRiskGateTest {
         assertEquals(Risk.NORMAL,result.risk)
         assertEquals(Observation.UNOBSERVABLE,result.observation)
     }
+    @Test fun recognizedBenignObjectDoesNotAlertImmediatelyDuringNormalEating() {
+        val gate=CameraRiskGate()
+        val safe=strong.copy(knownHazard=false,knownBenignObject=true)
+        for(t in 0L..2900L step 100) assertEquals(Risk.NORMAL,gate.update(safe,t).risk)
+        assertEquals(Risk.CAUTION,gate.update(safe,3000).risk)
+    }
 }

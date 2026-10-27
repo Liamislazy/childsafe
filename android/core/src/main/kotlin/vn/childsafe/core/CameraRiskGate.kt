@@ -13,6 +13,7 @@ data class MouthEvidence(
     val categoryConflict: Boolean = false,
     val ambiguousPerson: Boolean = false,
     val observedDeparture: Boolean = false,
+    val knownBenignObject: Boolean = false,
 )
 
 data class CameraDecision(val risk: Risk, val observation: Observation,
@@ -26,6 +27,7 @@ class CameraRiskGate(
     private val dangerMs: Long = 500,
     private val cooldownMs: Long = 5000,
     private val calibrated: Boolean = false,
+    private val benignDwellMs: Long = 3000,
 ) {
     private var previous: Long? = null
     private var candidateSince: Long? = null
@@ -83,7 +85,7 @@ class CameraRiskGate(
         else if (reliableSince == null) reliableSince = now
         val proposed = when {
             reliableSince != null && now - reliableSince!! >= dangerMs -> Risk.DANGER
-            now - candidateSince!! >= cautionMs -> Risk.CAUTION
+            now - candidateSince!! >= (if(e.knownBenignObject) benignDwellMs else cautionMs) -> Risk.CAUTION
             else -> Risk.NORMAL
         }
         val old = risk

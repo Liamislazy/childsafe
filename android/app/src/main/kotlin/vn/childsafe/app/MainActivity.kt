@@ -32,6 +32,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var message: TextView
     private var tab = "Theo dõi"
     private var resumed = false
+    private var scanKind="pair"
     private val bg = Color.rgb(246,247,249)
     private val ink = Color.rgb(29,35,48)
     private val muted = Color.rgb(102,112,133)
@@ -40,11 +41,19 @@ class MainActivity : ComponentActivity() {
         if (granted) startMonitor() else message.text = "Chưa được cấp quyền thông báo; chưa bật theo dõi nền."
     }
     private val scanPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) scan.launch(Intent(this, PairScanActivity::class.java))
+        if (granted) scan.launch(Intent(this, PairScanActivity::class.java).putExtra("kind",scanKind))
         else message.text = "Cần quyền camera để quét mã; bạn vẫn có thể dán mã ghép đôi."
     }
     private val scan = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-        if (result.resultCode == Activity.RESULT_OK) result.data?.getStringExtra("pairing")?.let(::pairCamera)
+        if (result.resultCode == Activity.RESULT_OK) result.data?.getStringExtra("pairing")?.let { code ->
+            if(code.startsWith("childsafe-relay:")) {
+                try {
+                    val data=JSONObject(EventCipher.decode(code.removePrefix("childsafe-relay:")).toString(Charsets.UTF_8))
+                    require(data.getInt("version")==1)
+                    createMonitor(data.getString("relay_url"),data.getString("certificate_pin"))
+                } catch(_:Exception){message.text="Mã cấu hình máy chủ không hợp lệ."}
+            } else pairCamera(code)
+        }
     }
     private val refresh = object : Runnable {
         override fun run() { if (resumed && tab == "Theo dõi") renderMonitor(); if (resumed) handler.postDelayed(this, 1000) }
@@ -131,16 +140,18 @@ class MainActivity : ComponentActivity() {
         card("Chọn vai trò thiết bị", "Máy theo dõi nhận sự kiện. Máy camera phân tích hình ảnh. Mã ghép đôi chỉ chia sẻ với thiết bị của bạn.")
         val url = input("Địa chỉ dịch vụ HTTPS")
         val pin = input("Fingerprint chứng chỉ LAN (nếu có)")
+        button("Quét mã cấu hình máy chủ trên máy tính") {
+            if(CameraData.running){message.text="Dừng máy camera trước khi quét mã.";return@button}
+            scanKind="relay"
+            if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)
+                scan.launch(Intent(this,PairScanActivity::class.java).putExtra("kind",scanKind))
+            else scanPermission.launch(Manifest.permission.CAMERA)
+        }
         button("Tạo máy theo dõi") {
             val address = url.text.toString().trim()
             val fingerprint = pin.text.toString().trim()
-            network {
-            val api = RelayApi(address, fingerprint)
-            val room = api.call("POST", "/v1/rooms")
-            SecureConfig(this).save(DeviceConfig("monitor",address,room.getString("room_id"),
-                room.getString("monitor_token"),EventCipher.encode(EventCipher.newKey()),certificatePin=fingerprint))
-            handler.post { message.text = "Đã tạo máy theo dõi. Bấm tạo mã ghép đôi cho máy camera." }
-        } }
+            createMonitor(address,fingerprint)
+        }
         button("Tạo mã QR ghép đôi camera (2 phút)") { network {
             val c = SecureConfig(this).load("monitor") ?: error("Chưa tạo máy theo dõi")
             val invitation = RelayApi(c.relayUrl,c.certificatePin).call("POST", "/v1/rooms/${c.roomId}/invitations",c.token)
@@ -155,17 +166,40 @@ class MainActivity : ComponentActivity() {
                 if (tab != "Ghép đôi" || isDestroyed) return@post
                 val image = ImageView(this).apply { setImageBitmap(bitmap); contentDescription = "Mã QR dùng một lần, hết hạn sau hai phút" }
                 body.addView(image, LinearLayout.LayoutParams(-1,dp(300)))
+                val showCode=Button(this).apply {text="Hiện mã để ghép đôi webcam máy tính";isAllCaps=false
+                    setOnClickListener {
+                        val content=TextView(this@MainActivity).apply{text=code;setTextIsSelectable(true);setPadding(24,24,24,24)}
+                        android.app.AlertDialog.Builder(this@MainActivity).setTitle("Mã dùng một lần; giữ riêng tư")
+                            .setView(ScrollView(this@MainActivity).apply{addView(content)}).setPositiveButton("Đóng",null).show()
+                    }
+                }
+                body.addView(showCode)
                 message.text = "Quét bằng máy camera. Tạo mã mới sẽ vô hiệu mã cũ."
-                handler.postDelayed({ if(image.parent === body) body.removeView(image) },120_000)
+                handler.postDelayed({ if(image.parent === body) body.removeView(image);if(showCode.parent===body) body.removeView(showCode) },120_000)
             }
         } }
         button("Máy camera: quét mã ghép đôi") {
+            if(CameraData.running) { message.text="Dừng máy camera trước khi quét mã ghép đôi mới."; return@button }
+            scanKind="pair"
             if(ContextCompat.checkSelfPermission(this,Manifest.permission.CAMERA)==PackageManager.PERMISSION_GRANTED)
                 scan.launch(Intent(this, PairScanActivity::class.java))
             else scanPermission.launch(Manifest.permission.CAMERA)
         }
         val paste = input("Hoặc dán mã childsafe-pair:…")
         button("Máy camera: dùng mã đã dán") { pairCamera(paste.text.toString()) }
+        button("Mở chế độ máy camera") { startActivity(Intent(this,CameraActivity::class.java)) }
+    }
+
+    private fun createMonitor(address: String,fingerprint: String)=network {
+        val existing=SecureConfig(this).load("monitor")
+        if(existing!=null) {
+            handler.post{message.text=if(existing.relayUrl==address && existing.certificatePin==fingerprint) "Máy chủ này đã được cấu hình; có thể tạo mã ghép đôi camera." else "Máy đã có cấu hình theo dõi khác. Xem phần Cài đặt trước khi thay máy chủ."}
+            return@network
+        }
+        val room=RelayApi(address,fingerprint).call("POST","/v1/rooms")
+        SecureConfig(this).save(DeviceConfig("monitor",address,room.getString("room_id"),
+            room.getString("monitor_token"),EventCipher.encode(EventCipher.newKey()),certificatePin=fingerprint))
+        handler.post{message.text="Đã tạo máy theo dõi. Bấm tạo mã ghép đôi cho máy camera."}
     }
 
     private fun pairCamera(code: String) = network {
@@ -177,14 +211,35 @@ class MainActivity : ComponentActivity() {
         require(joined.getString("room_id")==p.getString("room_id"))
         SecureConfig(this).save(DeviceConfig("camera",p.getString("relay_url"),joined.getString("room_id"),
             joined.getString("camera_token"),p.getString("key"),joined.getString("camera_id"),p.optString("certificate_pin")))
-        handler.post { message.text = "Đã ghép đôi máy camera. Phần chạy camera Android đang được tích hợp; chưa bật nhận diện." }
+        handler.post { message.text = "Đã ghép đôi. Bấm Mở chế độ máy camera để cấp quyền và bật phân tích." }
     }
 
     private fun renderSettings() {
         body.removeAllViews()
         card("Phạm vi nguyên mẫu", "Hỗ trợ chú ý khi vật cầm tay tiến sát vùng miệng. Không xác nhận nuốt hay nghẹn. Chưa kiểm chứng triển khai thực tế.")
+        card("Phạm vi vật hiện tại", "Nguy cơ cao cần mask đủ tin cậy và loại vật thống nhất; detector hiện hỗ trợ dao, kéo, nĩa cho nhánh này. Bút, đũa và đồng xu chưa có model định vị riêng. Vật khác có thể chỉ tạo cảnh giác hoặc không được nhận ra.")
         card("Kết nối", "Dịch vụ truyền sự kiện cần được cấu hình riêng. Nhận cảnh báo Internet khi điện thoại ngủ cần kiểm thử thêm; chưa có thông báo đẩy FCM trong bản này.")
         button("Cài đặt âm báo và quyền thông báo") { startActivity(Intent(android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(android.provider.Settings.EXTRA_APP_PACKAGE,packageName)) }
+        button("Kiểm tra khả năng chạy mô hình trên máy") { startActivity(Intent(this,DeviceCheckActivity::class.java)) }
+        button("Quản lý camera đã ghép đôi") { network {
+            val c=SecureConfig(this).load("monitor")?:error("Monitor not configured")
+            val api=RelayApi(c.relayUrl,c.certificatePin)
+            val cameras=api.call("GET","/v1/rooms/${c.roomId}/snapshot",c.token).getJSONArray("cameras")
+            val names=Array(cameras.length()){i->cameras.getJSONObject(i).getString("name")}
+            handler.post {
+                if(isDestroyed) return@post
+                if(names.isEmpty()){message.text="Chưa có camera ghép đôi.";return@post}
+                android.app.AlertDialog.Builder(this).setTitle("Chọn camera cần ngắt ghép đôi").setItems(names){_,index->
+                    val camera=cameras.getJSONObject(index)
+                    android.app.AlertDialog.Builder(this).setTitle("Ngắt ghép đôi ${names[index]}?")
+                        .setMessage("Máy này sẽ không gửi thêm sự kiện vào phòng theo dõi. Muốn dùng lại cần ghép đôi mới.")
+                        .setNegativeButton("Giữ lại",null).setPositiveButton("Ngắt ghép đôi"){_,_-> network {
+                            api.call("DELETE","/v1/rooms/${c.roomId}/cameras/${camera.getString("id")}",c.token)
+                            handler.post{message.text="Đã thu hồi quyền gửi của camera."}
+                        }}.show()
+                }.setNegativeButton("Đóng",null).show()
+            }
+        } }
         button("Xóa cấu hình máy theo dõi trên máy này") { stopService(Intent(this,MonitorService::class.java)); network { SecureConfig(this).clear("monitor"); handler.post { message.text="Đã xóa cấu hình cục bộ; thiết bị camera chưa bị thu hồi quyền trên relay." } } }
     }
     private fun requestMonitor() {

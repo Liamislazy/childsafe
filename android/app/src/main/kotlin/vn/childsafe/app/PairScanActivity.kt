@@ -12,7 +12,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.MultiFormatReader
-import com.google.zxing.RGBLuminanceSource
+import com.google.zxing.PlanarYUVLuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import java.util.concurrent.Executors
 
@@ -23,6 +23,7 @@ class PairScanActivity : ComponentActivity() {
     private var provider: ProcessCameraProvider? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefix=if(intent.getStringExtra("kind")=="relay") "childsafe-relay:" else "childsafe-pair:"
         val previewView = PreviewView(this)
         previewView.contentDescription = "Đưa mã ghép đôi ChildSafe vào giữa khung hình"
         setContentView(previewView)
@@ -33,23 +34,21 @@ class PairScanActivity : ComponentActivity() {
                 provider = future.get()
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888).build()
+                    .build()
                 val reader = MultiFormatReader()
                 analysis.setAnalyzer(executor) { image ->
                     try {
                         if (done) return@setAnalyzer
                         val plane = image.planes[0]
                         val buffer = plane.buffer
-                        val pixels = IntArray(image.width * image.height)
+                        val pixels = ByteArray(image.width * image.height)
                         for (y in 0 until image.height) for (x in 0 until image.width) {
                             val offset = y * plane.rowStride + x * plane.pixelStride
-                            val r = buffer.get(offset).toInt() and 255
-                            val g = buffer.get(offset + 1).toInt() and 255
-                            val b = buffer.get(offset + 2).toInt() and 255
-                            pixels[y * image.width + x] = (255 shl 24) or (r shl 16) or (g shl 8) or b
+                            pixels[y * image.width + x] = buffer.get(offset)
                         }
-                        val text = reader.decode(BinaryBitmap(HybridBinarizer(RGBLuminanceSource(image.width, image.height, pixels)))).text
-                        if (text.startsWith("childsafe-pair:") && text.length <= 8192) {
+                        val text = reader.decode(BinaryBitmap(HybridBinarizer(PlanarYUVLuminanceSource(
+                            pixels,image.width,image.height,0,0,image.width,image.height,false)))).text
+                        if (text.startsWith(prefix) && text.length <= 8192) {
                             done = true
                             runOnUiThread { setResult(Activity.RESULT_OK, Intent().putExtra("pairing", text)); finish() }
                         }

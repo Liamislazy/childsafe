@@ -52,6 +52,10 @@ def export_classifier(checkpoint: Path, output: Path):
         actual = session.run(["logits"], {"image": sample.numpy()})[0]
         np.testing.assert_allclose(actual, reference, rtol=1e-3, atol=1e-4)
         errors.append(float(np.max(np.abs(actual - reference))))
+    vector = output / "classifier-check.f32"
+    vector.write_bytes(samples[0].numpy().astype("<f4").tobytes())
+    with torch.inference_mode():
+        expected = model(samples[0]).numpy().reshape(-1).tolist()
     return {"file": target.name, "sha256": sha256(target), "source_sha256": sha256(checkpoint),
             "arch": metadata["arch"], "classes": metadata["classes"],
             "binary_map": metadata["binary_map"], "img_size": size,
@@ -61,13 +65,38 @@ def export_classifier(checkpoint: Path, output: Path):
             "letterbox_fill": [124, 116, 104], "interpolation": "bilinear",
             "mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225],
             "layout": "NCHW", "output": "logits", "opset": 17,
-            "verification": {"kind": "three synthetic inputs, CPU logits only", "max_abs_errors": errors}}
+            "verification": {"kind": "three synthetic inputs, CPU logits only", "max_abs_errors": errors,
+                "input_file": vector.name, "input_sha256": sha256(vector), "expected_logits": expected}}
+
+
+def verify_detector(model, target, size, output):
+    import onnxruntime as ort
+    tensor = np.random.default_rng(219).random((1, 3, size, size), dtype=np.float32)
+    with torch.inference_mode():
+        raw = model.model.eval()(torch.from_numpy(tensor))
+        reference = [raw[0].numpy(), raw[1][-1].numpy()]
+    options = ort.SessionOptions()
+    options.intra_op_num_threads = 1
+    session = ort.InferenceSession(str(target), sess_options=options, providers=["CPUExecutionProvider"])
+    actual = session.run(None, {session.get_inputs()[0].name: tensor})
+    checks = []
+    for observed, expected in zip(actual, reference, strict=True):
+        np.testing.assert_allclose(observed, expected, rtol=1e-3, atol=1e-3)
+        indices = np.linspace(0, observed.size - 1, 64, dtype=int)
+        checks.append({"shape": list(observed.shape), "sample_indices": indices.tolist(),
+                       "expected": observed.reshape(-1)[indices].tolist(),
+                       "max_abs_error_to_pytorch": float(np.max(np.abs(observed - expected)))})
+    path = output / "detector-check.f32"
+    path.write_bytes(tensor.astype("<f4").tobytes())
+    return {"kind": "one synthetic tensor; full raw outputs compared on CPU, 64 values per output for device self-check",
+            "input_file": path.name, "input_sha256": sha256(path), "outputs": checks}
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--checkpoint", type=Path, required=True)
     p.add_argument("--detector", type=Path)
+    p.add_argument("--detector-size", type=int, choices=[320,640], default=640)
     p.add_argument("--face", type=Path)
     p.add_argument("--hand", type=Path)
     p.add_argument("--out", type=Path, default=Path("outputs/android-models"))
@@ -86,15 +115,16 @@ def main():
         model = YOLO(str(args.detector))
         if model.task != "segment":
             p.error("Mobile runtime requires a segmentation detector; boxes alone cannot confirm object proximity")
-        source = Path(model.export(format="onnx", imgsz=640, opset=17, simplify=False,
+        source = Path(model.export(format="onnx", imgsz=args.detector_size, opset=17, simplify=False,
                                    dynamic=False, nms=False, device="cpu"))
         target = args.out / "detector.onnx"
         if source.resolve() != target.resolve():
             shutil.copyfile(source, target)
         manifest["detector"] = {"file": target.name, "sha256": sha256(target),
                                 "source_sha256": sha256(args.detector), "classes": model.names,
-                                "input_size": 640, "task": "segment", "mask_coefficients": 32,
+                                "input_size": args.detector_size, "task": "segment", "mask_coefficients": 32,
                                 "output": "raw YOLO11 segmentation, no NMS", "opset": 17}
+        manifest["detector"]["verification"] = verify_detector(model, target, args.detector_size, args.out)
     for name, path in [("face", args.face), ("hand", args.hand)]:
         if path:
             target = args.out / f"{name}_landmarker.task"

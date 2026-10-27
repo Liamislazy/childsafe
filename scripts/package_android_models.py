@@ -24,6 +24,14 @@ def main():
         if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
             p.error(f"Model checksum mismatch: {role}")
         files.append(path)
+        verification = entry.get("verification", {})
+        if "input_file" in verification:
+            vector = args.source / verification["input_file"]
+            if vector.name != verification["input_file"] or not vector.resolve().is_relative_to(args.source.resolve()):
+                p.error("Verification path escapes source directory")
+            if hashlib.sha256(vector.read_bytes()).hexdigest() != verification["input_sha256"]:
+                p.error("Verification tensor checksum mismatch")
+            files.append(vector)
     destination = ROOT / "android/app/src/main/assets/models"
     destination.mkdir(parents=True, exist_ok=True)
     for path in files:

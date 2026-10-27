@@ -29,7 +29,7 @@ data class MonitorView(
 }
 
 /** One instance per camera. All times are elapsed-real-time milliseconds. */
-class MonitorState(private val freshMs: Long = 2500, private val cooldownMs: Long = 30_000) {
+class MonitorState(private val freshMs: Long = 2500, private val cooldownMs: Long = 5000) {
     private var epoch: String? = null
     private var sequence = -1L
     private var result: CameraResult? = null
@@ -40,6 +40,7 @@ class MonitorState(private val freshMs: Long = 2500, private val cooldownMs: Lon
     private var lastNotification = Long.MIN_VALUE
     private var lastNotifiedRisk = Risk.NORMAL
     private val seenEvents = LinkedHashSet<String>()
+    private val seenTests = LinkedHashSet<String>()
 
     fun beginEpoch(value: String) {
         if (epoch == value) return
@@ -78,7 +79,7 @@ class MonitorState(private val freshMs: Long = 2500, private val cooldownMs: Lon
         val cooldownPassed = lastNotification == Long.MIN_VALUE || now - lastNotification >= cooldownMs
         val escalated = value.risk.ordinal > lastNotifiedRisk.ordinal
         val notify = !bootstrap && value.isAlert && newEvent && value.risk != Risk.NORMAL &&
-            now >= mutedUntil && (cooldownPassed || escalated)
+            now >= mutedUntil && (cooldownPassed || escalated || value.risk == Risk.DANGER)
         if (notify) { lastNotification = now; lastNotifiedRisk = value.risk }
         return view(now).copy(notify = notify)
     }
@@ -89,6 +90,15 @@ class MonitorState(private val freshMs: Long = 2500, private val cooldownMs: Lon
         return MonitorView(connection, result?.risk,
             if (connection == Connection.FRESH) result!!.observation else Observation.UNOBSERVABLE,
             result?.reason.orEmpty(), validUntilElapsedMs = freshUntil)
+    }
+
+    fun acceptTest(eventId: String, messageEpoch: String, ageMs: Long, now: Long,
+                   bootstrap: Boolean = false): Boolean {
+        checkClock(now)
+        if(bootstrap || messageEpoch!=epoch || ageMs !in 0 until freshMs || now<mutedUntil) return false
+        val fresh=seenTests.add(eventId)
+        while(seenTests.size>64) seenTests.remove(seenTests.first())
+        return fresh // No risk, observation, sequence or connection mutation.
     }
 
     private fun checkClock(now: Long) {
