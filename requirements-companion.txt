@@ -1,0 +1,2 @@
+# Add to requirements-runtime.txt. Tested Python 3.12 on Windows.
+cryptography==50.0.2

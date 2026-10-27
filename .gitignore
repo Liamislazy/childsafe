@@ -25,3 +25,17 @@ Ultralytics/
 data/external/
 data/detector/
 data/supplement/
+.superdesign/tmp/
+android/.gradle/
+android/**/build/
+android/local.properties
+android/app/google-services.json
+android/app/src/main/assets/models/
+*.onnx
+*.onnx.data
+*.keystore
+*.jks
+companion*.json
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
