@@ -56,6 +56,43 @@ Ngưỡng Android còn ghi chưa kiểm chứng, không tô xanh vì chỉ nạp
 
 ## Hai điện thoại cùng Wi-Fi
 
+### Lấy code và chạy relay trên máy đồng đội
+
+File `scripts/companion_relay.py` dùng các mô-đun trong `src/childsafe/companion/`,
+nên lấy cả nhánh `codex/android-companion`. Với repo đã clone, lưu các thay đổi
+đang làm trước khi chuyển nhánh:
+
+```powershell
+git fetch origin
+git switch codex/android-companion
+```
+
+Nếu chưa clone:
+
+```powershell
+git clone --branch codex/android-companion https://github.com/Liamislazy/childsafe.git
+cd childsafe
+```
+
+Chỉ chạy relay thì dùng Python 3.12 và bộ thư viện nhẹ bên dưới; không cần
+PyTorch, trọng số mô hình hay Android SDK. Các lệnh này chạy trong thư mục repo:
+
+```powershell
+py -3.12 -m venv .venv-relay
+.venv-relay\Scripts\python.exe -m pip install -r requirements-relay.txt
+.venv-relay\Scripts\python.exe scripts/companion_certificate.py --host 192.168.1.10
+.venv-relay\Scripts\python.exe scripts/companion_relay.py --host 192.168.1.10 --port 8443 --cert outputs/companion/tls/cert.pem --key outputs/companion/tls/key.pem
+```
+
+Thay `192.168.1.10` ở cả hai lệnh bằng IPv4 Wi-Fi của máy chạy relay (xem bằng
+`ipconfig`). Giữ cửa sổ relay mở. Điện thoại dùng cùng Wi-Fi và quét ảnh
+`outputs/companion/tls/relay-setup.png` do máy này tạo, rồi ghép đôi theo các bước
+bên dưới. Nếu đã có chứng chỉ thì dùng lại; không cần chạy lệnh tạo mới mỗi lần.
+Mỗi máy relay có mã QR/chứng chỉ riêng. APK và trọng số không nằm trên GitHub;
+cài APK test03 đã cung cấp để thử với điện thoại.
+
+### Cấu hình và ghép đôi
+
 Bản thử dùng relay HTTPS trên máy tính cùng Wi-Fi. Máy tính phải còn bật và IP
 còn đúng. Chưa triển khai relay Internet/FCM hoặc bảo đảm khi Android ngủ lâu.
 Không mở cổng Internet hay tự sửa firewall.
