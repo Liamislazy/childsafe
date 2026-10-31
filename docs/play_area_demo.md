@@ -21,6 +21,23 @@ Chế độ cũng có ở `/play-area` của `scripts/web_demo.py`, qua nút **C
 chơi**. Khởi động lại server cũ để nạp route mới. Bản chạy riêng nhẹ hơn vì không
 nạp classifier hoặc MediaPipe. Không cần Android hay relay.
 
+Trên Windows, để máy chủ chạy nền độc lập với cửa sổ lệnh đang làm việc:
+
+```powershell
+rtk proxy powershell -NoProfile -ExecutionPolicy Bypass -File scripts/start_play_area.ps1
+```
+
+Lệnh kiểm tra máy chủ đã chạy trước khi mở tiến trình mới, không dừng tiến trình
+khác. Nhật ký nằm trong `outputs/play-area-server/`. Chạy lại lệnh sau khi khởi
+động lại máy; đây không phải dịch vụ tự khởi động cùng Windows.
+
+Nếu camera có hình nhưng không có kết quả: hình camera là phần xem trước trong
+trình duyệt, vẫn có thể chạy khi máy chủ đã dừng. Giao diện sẽ báo mất kết nối,
+giữ nguyên lịch sử và tự thử lại khi bật cập nhật tự động. Chạy lệnh phía trên,
+sau đó tải lại trang để nhận bản sửa mới. Khi xử lý đang chạy, nút chụp tạm khóa
+và trạng thái ghi rõ đang chờ kết quả. Không dùng hình xem trước làm bằng chứng
+hệ thống đang phân tích.
+
 ## Thử trong một phút
 
 1. Dùng bàn có ánh sáng đều, mặt lót có chi tiết để kiểm tra độ nét. Camera nhìn

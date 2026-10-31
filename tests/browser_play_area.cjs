@@ -41,14 +41,43 @@ const fs=require('node:fs');fs.mkdirSync('outputs/play-area',{recursive:true});
   let release,entered;const seen=new Promise(r=>entered=r);
   await page.route('**/api/play-area/scan?*',async route=>{entered();await new Promise(r=>release=r);try{await route.fulfill({json:{width:800,height:600,roi:[0,0,800,600],candidates:[detection],quality:{reasons:[]},detector_ok:true,usable_for_comparison:true,message:'Late fixture',ms:10}});}catch{}});
   await page.locator('#camera').click();await page.waitForFunction(()=>document.getElementById('camera').textContent==='Tắt camera');
-  await page.locator('#capture').click();await seen;await page.locator('#reset').click();release();
+  await page.locator('#capture').click();await seen;
+  assert.match(await page.locator('#status').textContent(),/Đang phân tích/);
+  assert.equal(await page.locator('#capture').isDisabled(),true);
+  await page.locator('#reset').click();release();
   await page.waitForTimeout(100);assert.equal(await page.locator('#items .item').count(),0);
+  assert.equal(await page.locator('#capture').isEnabled(),true);
+  // A cached camera page must identify a stopped backend, preserve history and
+  // recover automatically, without pretending camera preview is inference.
+  await page.unroute('**/api/play-area/scan?*');
+  let mode='good';
+  await page.route('**/api/play-area/scan?*',route=>{
+    if(mode==='offline')return route.abort('connectionrefused');
+    if(mode==='html')return route.fulfill({status:500,contentType:'text/html',body:'Server error'});
+    return route.fulfill({json:{width:800,height:600,roi:[0,0,800,600],candidates:[detection],quality:{reasons:[]},detector_ok:true,usable_for_comparison:true,message:'Dữ liệu mô phỏng kiểm thử phục hồi kết nối',ms:10}});
+  });
+  await page.locator('#capture').click();await page.waitForSelector('#items .item');
+  await page.locator('#items input').check();
+  mode='offline';await page.locator('#capture').click();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.includes('Không kết nối được'));
+  assert.match(await page.locator('#status').textContent(),/Camera chỉ đang hiển thị/);
+  assert.equal(await page.locator('#visibleCount').textContent(),'—');
+  assert.equal(await page.locator('#items input').isChecked(),true);
+  mode='html';await page.locator('#capture').click();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.includes('HTTP 500'));
+  assert.equal(await page.locator('#items .item').count(),1);
+  mode='good';await page.locator('#auto').check();
+  await page.waitForFunction(()=>document.getElementById('status').textContent.includes('phục hồi kết nối'));
+  assert.equal(await page.locator('#error').textContent(),'');
+  assert.equal(await page.locator('#visibleCount').textContent(),'1');
+  assert.equal(await page.locator('#items input').isChecked(),true);
   await page.locator('#camera').click();
+  await page.locator('#reset').click();
   const downloadWait=page.waitForEvent('download');await page.locator('#export').click();const download=await downloadWait;
   await download.saveAs('outputs/play-area/browser-export.json');const report=JSON.parse(fs.readFileSync('outputs/play-area/browser-export.json'));
   assert.equal(report.image_data_included,false);assert.equal(report.items.length,0);
   await page.setViewportSize({width:390,height:844});assert.equal(await page.locator('body').evaluate(el=>el.scrollWidth<=innerWidth),true);
   assert.equal(errors.length,0,errors.join('\n'));assert.equal(external.length,0,external.join('\n'));
-  console.log(JSON.stringify({passed:true,physical_camera_opened:false,external_page_requests:external.length,scope:'actual UI, user-confirmation vs detection, poor images, two good misses, stop/reset races, JSON export, mobile layout'}));
+  console.log(JSON.stringify({passed:true,physical_camera_opened:false,external_page_requests:external.length,scope:'actual UI, user-confirmation vs detection, poor images, two good misses, stop/reset races, request progress, offline/non-JSON errors, automatic recovery, JSON export, mobile layout'}));
  }finally{await browser.close();}
 })().catch(e=>{console.error(e);process.exit(1)});

@@ -26,6 +26,7 @@ if(typeof document!=='undefined'){
 const $=id=>document.getElementById(id), video=$('video'), photo=$('photo');
 let history=new PlayAreaHistory(),stream=null,generation=0,busy=false,pending=false,timer=null,lastGood=0,lastResult=null,sourceKind='none',photoUrl=null,currentPhoto=null,activeRequest=null;
 let sessionStarted=new Date().toISOString(),reports=[],info=null,lastVideoTime=-1;
+let scanProblem=false,infoPending=false;
 const work=document.createElement('canvas');
 const canvas=$('overlay');
 function status(message,review=false){$('status').textContent=message;$('status').classList.toggle('review',review);}
@@ -57,7 +58,7 @@ function draw(result){
   result.candidates.forEach(c=>{const [a,t,b,z]=c.box;ctx.strokeStyle='#f0a92b';ctx.fillStyle='#f0a92b';ctx.font=`${14*devicePixelRatio}px system-ui`;ctx.strokeRect(ox+a*s,oy+t*s,(b-a)*s,(z-t)*s);ctx.fillText(`Vật giống ${c.name}`,ox+a*s,Math.max(16*devicePixelRatio,oy+t*s-5));});
 }
 function invalidate(message){history.invalidate();blankOverlay();render();if(message)status(message);}
-function resetHistory(){history=new PlayAreaHistory();lastResult=null;lastGood=0;reports=[];sessionStarted=new Date().toISOString();document.querySelectorAll('[data-manual]').forEach(x=>x.checked=false);invalidate('Phiên mới. Giữ camera cố định và kiểm tra lại vùng bàn.');}
+function resetHistory(){history=new PlayAreaHistory();lastResult=null;lastGood=0;reports=[];scanProblem=false;$('error').textContent='';$('timing').textContent='';$('capture').disabled=!(stream||(sourceKind==='photo'&&currentPhoto));sessionStarted=new Date().toISOString();document.querySelectorAll('[data-manual]').forEach(x=>x.checked=false);invalidate('Phiên mới. Giữ camera cố định và kiểm tra lại vùng bàn.');}
 function stop(message='Camera đã tắt; danh sách cũ chỉ là lịch sử.'){
   generation++;pending=false;clearTimeout(timer);timer=null;
   if(activeRequest)activeRequest.abort();activeRequest=null;busy=false;
@@ -78,28 +79,41 @@ async function start(){
     pending=false;resetHistory();$('camera').textContent='Tắt camera';$('capture').disabled=false;
     $('source').textContent='Camera đang bật · chỉ phần trong viền được rà soát · không ghi hình';
     stream.getTracks().forEach(t=>t.addEventListener('ended',()=>{if(stream===acquired)stop('Nguồn camera bị ngắt. Bật lại để bắt đầu phiên mới.');}));
-    const devices=await navigator.mediaDevices.enumerateDevices();if(g!==generation)return;
+    // Camera labels are optional; their lookup must not block analysis.
+    schedule(g);
+    const devices=await navigator.mediaDevices.enumerateDevices().catch(()=>[]);if(g!==generation)return;
     const selected=id;$('device').replaceChildren(new Option('Mặc định',''));
     devices.filter(d=>d.kind==='videoinput').forEach((d,i)=>$('device').add(new Option(d.label||`Camera ${i+1}`,d.deviceId)));
-    $('device').value=selected;schedule(g);
+    $('device').value=selected;
   }catch(e){if(g===generation){stop();$('error').textContent='Không mở được camera: '+e.message;}}
 }
 function schedule(g){clearTimeout(timer);if(stream&&g===generation&&$('auto').checked)timer=setTimeout(async()=>{await capture(g);schedule(g);},800);}
 async function send(blob,g,kind,captured){
-  if(busy||g!==generation)return;busy=true;$('error').textContent='';
+  if(busy||g!==generation)return;busy=true;$('capture').disabled=true;
+  if(!scanProblem)status('Đang phân tích ảnh trên máy này…');
+  $('timing').textContent=scanProblem?'Đang thử kết nối lại; chưa có kết quả mới.':'Đã chụp ảnh · đang chờ bộ xử lý trả kết quả…';
   const controller=new AbortController();activeRequest=controller;const timeout=setTimeout(()=>controller.abort(),15000);
   try{
     const response=await fetch('/api/play-area/scan?'+new URLSearchParams({inset:Number($('inset').value)/100}),{method:'POST',body:blob,headers:{'X-ChildSafe-Scan':'1'},signal:controller.signal});
-    const result=await response.json();if(g!==generation)return;
+    let result;
+    try{result=await response.json();}catch{throw Error(`Bộ xử lý trả phản hồi không hợp lệ (HTTP ${response.status}).`);}
+    if(g!==generation)return;
     if(!response.ok)throw Error(result.error||'Không phân tích được ảnh');
     if(kind==='camera'&&performance.now()-captured>3000)throw Error('Kết quả camera quá cũ; hãy chụp lại.');
-    lastResult=result;draw(result);history.update(result);lastGood=performance.now();render();
+    lastResult=result;draw(result);history.update(result);lastGood=performance.now();scanProblem=false;$('error').textContent='';render();
     const messages=[result.message,...result.quality.reasons,!result.detector_ok?'Detector chưa hoạt động; không dùng ảnh này để kết luận vật biến mất.':''].filter(Boolean);
     status(messages.join(' '),result.candidates.length>0);
     $('timing').textContent=`${kind==='photo'?'Ảnh đã chọn, không phải cảnh hiện tại':'Ảnh camera vừa chụp'} · ${result.width}×${result.height} · xử lý ${result.ms} ms · ngưỡng chất lượng chưa hiệu chuẩn`;
     reports.push({at:new Date().toISOString(),source:kind,result});if(reports.length>20)reports.shift();
-  }catch(e){if(g===generation){$('error').textContent=e.message;invalidate('Chưa có kết quả mới. Giữ nguyên các mục cần kiểm tra trước đó.');}}
-  finally{clearTimeout(timeout);if(activeRequest===controller){activeRequest=null;busy=false;}}
+    if(!info)refreshInfo();
+  }catch(e){if(g===generation){
+    scanProblem=true;
+    const message=e.name==='AbortError'?'Bộ xử lý chưa phản hồi sau 15 giây.':e instanceof TypeError?'Không kết nối được với bộ xử lý trên máy này.':e.message;
+    $('error').textContent=message;
+    invalidate(`${message} ${kind==='camera'?'Camera chỉ đang hiển thị; chưa có phân tích mới.':'Ảnh chưa được phân tích.'} Giữ nguyên các mục cần kiểm tra trước đó.`);
+    $('timing').textContent=stream&&$('auto').checked?'Sẽ tự thử lại. Nếu lỗi còn tiếp diễn, khởi động lại bộ xử lý theo hướng dẫn.':'Khởi động bộ xử lý rồi bấm Chụp ảnh kiểm tra để thử lại.';
+  }}
+  finally{clearTimeout(timeout);if(activeRequest===controller){activeRequest=null;busy=false;if(g===generation)$('capture').disabled=!(stream||(sourceKind==='photo'&&currentPhoto));}}
 }
 async function capture(g=generation){
   if(!stream||busy||g!==generation||!video.videoWidth||!video.videoHeight)return;
@@ -128,5 +142,21 @@ $('export').onclick=()=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(stream||pending))stop('Tab đã ẩn; camera dừng. Bật lại để kiểm tra tiếp.');});
 addEventListener('pagehide',()=>stop());addEventListener('resize',()=>{if(lastResult&&history.fresh)draw(lastResult);});
 setInterval(()=>{if(stream&&lastGood&&performance.now()-lastGood>3500&&history.fresh)invalidate('Ảnh cập nhật đã cũ; chưa dùng để kết luận vật còn hay mất.');},500);
-fetch('/api/play-area/info').then(r=>{if(!r.ok)throw Error('Không đọc được model');return r.json();}).then(data=>{info=data;$('scope').textContent=data.scope;$('model').textContent=`Detector: ${data.model} · các lớp đang có: ${data.supported.map(x=>x.name).join(', ')||'chưa có'} · ngưỡng chưa được kiểm chứng`;if(!data.detector_ok)status('Chưa nạp được detector cục bộ. Kiểm tra trọng số trước khi thử.');}).catch(e=>{$('error').textContent=e.message;});
+async function refreshInfo(){
+  if(infoPending)return;infoPending=true;
+  const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+  try{
+    const response=await fetch('/api/play-area/info',{signal:controller.signal,cache:'no-store'});
+    if(!response.ok)throw Error('Không đọc được mô hình');
+    const data=await response.json();info=data;$('scope').textContent=data.scope;
+    $('model').textContent=`Detector: ${data.model} · các lớp đang có: ${data.supported.map(x=>x.name).join(', ')||'chưa có'} · ngưỡng chưa được kiểm chứng`;
+    if(!data.detector_ok&&!lastResult&&!busy)status('Chưa nạp được detector cục bộ. Kiểm tra trọng số trước khi thử.');
+    else if(!lastResult&&!busy&&!scanProblem)status('Bộ xử lý đã sẵn sàng. Bật camera hoặc chọn ảnh để kiểm tra.');
+  }catch{
+    $('model').textContent='Chưa kết nối được bộ xử lý. Xem hướng dẫn khởi động lại.';
+    if(!busy&&!scanProblem&&!lastResult)status('Chưa kết nối được bộ xử lý trên máy này. Bật camera chỉ hiển thị hình ảnh cho đến khi kết nối lại.');
+  }finally{clearTimeout(timeout);infoPending=false;}
+}
+status('Đang kết nối và nạp mô hình trên máy này…');refreshInfo();
+setInterval(()=>{if(!info&&!document.hidden)refreshInfo();},5000);
 }

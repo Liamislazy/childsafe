@@ -93,6 +93,8 @@ def test_api_origin_body_validation_and_real_page(tmp_path):
     with TestClient(create_play_area_app({}, Detector())) as client:
         assert client.get('/play-area').status_code == 200
         assert client.get('/play-area.js').status_code == 200
+        assert client.get('/play-area').headers['cache-control'] == 'no-store'
+        assert client.get('/play-area.js').headers['cache-control'] == 'no-store'
         assert client.get('/api/play-area/info').json()['supported'][0]['label'] == 'knife'
         assert client.post('/api/play-area/scan', content=image()).status_code == 403
         headers = {'x-childsafe-scan': '1'}
@@ -104,6 +106,16 @@ def test_api_origin_body_validation_and_real_page(tmp_path):
         assert result.status_code == 200
         assert 'image' not in result.json() and not result.json()['images_saved']
         assert not list(tmp_path.iterdir())
+
+
+def test_health_probe_does_not_load_model(monkeypatch):
+    def fail_load(self):
+        raise AssertionError('Health probe must work before model initialization')
+    monkeypatch.setattr(PlayAreaScanner, '_load', fail_load)
+    with TestClient(create_play_area_app({})) as client:
+        response = client.get('/api/play-area/health')
+        assert response.json() == {'service': 'childsafe-play-area', 'status': 'running'}
+        assert response.headers['cache-control'] == 'no-store'
 
 
 def test_route_is_available_in_existing_runtime_app():

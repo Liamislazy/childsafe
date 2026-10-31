@@ -24,6 +24,7 @@ from starlette.concurrency import run_in_threadpool
 from childsafe.vision.detection import SegmentationDetector, select_weights
 
 STATIC = Path(__file__).parent / 'static'
+NO_CACHE = {'Cache-Control': 'no-store'}
 LABELS = {'knife': 'Dao', 'scissors': 'Kéo', 'fork': 'Nĩa'}
 LIMIT = 'Chỉ gợi ý dao, kéo, nĩa nhìn thấy trong vùng rà soát; có thể nhận nhầm hoặc bỏ sót.'
 OUTSIDE = 'Bút, đồng xu, pin, ổ điện, máy sưởi và kích thước/tầm với của trẻ chưa được đánh giá.'
@@ -154,11 +155,16 @@ def play_area_router(scanner: PlayAreaScanner):
 
     @router.get('/play-area')
     def page():
-        return FileResponse(STATIC / 'play_area.html')
+        return FileResponse(STATIC / 'play_area.html', headers=NO_CACHE)
 
     @router.get('/play-area.js')
     def javascript():
-        return FileResponse(STATIC / 'play_area.js', media_type='text/javascript')
+        return FileResponse(STATIC / 'play_area.js', media_type='text/javascript', headers=NO_CACHE)
+
+    @router.get('/api/play-area/health')
+    def health():
+        # Startup/liveness probe must not wait for model loading or inference.
+        return JSONResponse({'service': 'childsafe-play-area', 'status': 'running'}, headers=NO_CACHE)
 
     @router.get('/api/play-area/info')
     async def info():
@@ -196,5 +202,5 @@ def create_play_area_app(cfg, detector=None):
 
     @app.get('/')
     def home():
-        return FileResponse(STATIC / 'play_area.html')
+        return FileResponse(STATIC / 'play_area.html', headers=NO_CACHE)
     return app
