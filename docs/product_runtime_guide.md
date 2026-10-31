@@ -5,6 +5,15 @@ camera, các người có ID tạm thời. Không xác nhận tiếp xúc vật 
 Chưa hiệu chuẩn camera thật; bút/đũa/đồng xu chưa có detector riêng. Không tự đổi
 `calibrated`/`complete_object_coverage` để giao diện hiện xanh.
 
+Cập nhật chống báo nhầm 21/10: tay gần mặt đơn thuần không khởi tạo cảnh báo. Cần vị trí vật;
+ứng viên chưa có mask chắc chắn cần tồn tại theo thời gian. Mất quan sát chỉ giữ bằng chứng tối đa
+0,8 giây, tay che mặt không tự gia hạn. Xem `docs/face_touch_fix_2026_10_21.md` để biết giới hạn còn lại.
+
+Cập nhật vật nhỏ 21/10: thử tìm tay trong vùng nhỏ khi bị bỏ sót, dò vật theo từng
+tay và giữ hộp vật khi mask hỏng làm ứng viên CAUTION. Các lượt phụ có kiểm tra
+ngân sách thời gian; vẫn chưa có detector bút và chưa kiểm chứng bút ở 2 m.
+Xem `docs/distant_object_fix_2026_10_21.md` trước khi thử lại.
+
 ## Chạy trên máy hiện tại
 
 ```powershell
@@ -14,6 +23,10 @@ powershell -ExecutionPolicy Bypass -File scripts/start_web_demo.ps1
 Mở `http://127.0.0.1:8000`, chọn **Bật camera**. Một tab sở hữu phiên camera;
 tab khác không được trộn frame hoặc reset phiên đó. Camera/micro không tự bật
 khi mở trang; đợt này không thu âm. Ảnh trong RAM, không ghi video.
+
+Nút **Tải ảnh kiểm tra** chỉ tải một PNG nguyên khung khi người dùng chủ động bấm lúc camera đang bật.
+Không kèm overlay/nhãn dự đoán, không tự ghi ảnh hay upload. Người dùng tự review và gán nhãn nếu
+dùng ảnh để chuẩn bị dữ liệu; chỉ thu người lớn đồng ý tham gia hoặc đạo cụ theo quy trình thử.
 
 Launcher chọn checkpoint local đầu tiên tồn tại. Mặc định là MobileNetV3-Large
 (10 lớp ChildSUn, chia theo nhóm, không có lớp "other"); robust + other chỉ còn là

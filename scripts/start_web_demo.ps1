@@ -1,4 +1,4 @@
-param([int]$Port = 8000)
+param([int]$Port = 8000, [int]$CpuThreads = 0, [string]$ObjectModel = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $pythonPath = Join-Path $projectRoot '.venv\Scripts\python.exe'
@@ -13,6 +13,11 @@ if (Test-Path -LiteralPath $pidPath) {
 }
 if (Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue) { throw "Port $Port is already in use." }
 $env:YOLO_CONFIG_DIR = Join-Path $projectRoot 'Ultralytics'
-$process = Start-Process -FilePath $pythonPath -ArgumentList '-u','scripts/web_demo.py','--port',"$Port" -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logRoot 'stdout.log') -RedirectStandardError (Join-Path $logRoot 'stderr.log') -PassThru
+$demoArgs = @('-u','scripts/web_demo.py','--port',"$Port",'--cpu-threads',"$CpuThreads")
+if ($ObjectModel) {
+    $objectPath = (Resolve-Path -LiteralPath $ObjectModel).Path
+    $demoArgs += @('--object-model', ('"' + $objectPath + '"'))
+}
+$process = Start-Process -FilePath $pythonPath -ArgumentList $demoArgs -WorkingDirectory $projectRoot -WindowStyle Hidden -RedirectStandardOutput (Join-Path $logRoot 'stdout.log') -RedirectStandardError (Join-Path $logRoot 'stderr.log') -PassThru
 $process.Id | Set-Content -LiteralPath $pidPath
 Write-Output "Starting ChildSafe at http://127.0.0.1:$Port (process $($process.Id)); startup logs: $logRoot"

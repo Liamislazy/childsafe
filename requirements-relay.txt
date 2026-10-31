@@ -1,0 +1,6 @@
+# Relay + LAN certificate/QR only. Python 3.12; no inference models or Android SDK.
+fastapi==0.115.12
+uvicorn==0.34.2
+pydantic==2.14.1
+cryptography==50.0.2
+qrcode[pil]==8.2

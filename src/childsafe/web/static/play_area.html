@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChildSafe — Chuẩn bị góc chơi</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--text:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#3b6fd8;--chip:#eef1f6;--caution:#a55f00}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--panel:#1b2029;--text:#e7eaf0;--muted:#98a2b3;--line:#2b3240;--accent:#6d97f0;--chip:#252c38;--caution:#f0a92b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:16px 28px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:18px;align-items:center;flex-wrap:wrap}header strong{font-size:19px}header span{color:var(--muted)}header button{margin-left:auto}
+main{max-width:1440px;margin:auto;padding:28px}h1{font-size:28px;margin:0 0 6px}h2{font-size:19px;margin:0 0 12px}p{margin:8px 0}.muted,.note{color:var(--muted)}.note{font-size:14px}.grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,1fr);gap:24px;margin-top:24px;align-items:start}.card{padding:20px;background:var(--panel);border:1px solid var(--line);border-radius:12px}.stack{display:grid;gap:18px}.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:12px 0}button,.file{border:1px solid var(--line);border-radius:8px;padding:11px 14px;background:var(--chip);color:var(--text);font:inherit;cursor:pointer;min-height:46px}button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}button:disabled{opacity:.5;cursor:not-allowed}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}.file input{display:none}select{max-width:100%;font:inherit;padding:8px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:8px}
+.stage{position:relative;aspect-ratio:16/10;background:#10141b;border-radius:10px;overflow:hidden}.stage video,.stage img,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}.stage canvas{pointer-events:none}.stage img[hidden],.stage video[hidden]{display:none}.placeholder{position:absolute;inset:0;display:grid;place-content:center;text-align:center;color:#cbd5e1;padding:28px}.placeholder[hidden]{display:none}.status{border-left:4px solid var(--muted);padding:14px 18px;background:var(--chip);border-radius:8px}.status.review{border-color:var(--caution)}.counts{display:flex;gap:24px;margin:16px 0}.counts strong{display:block;font-size:26px}.counts span{font-size:13px;color:var(--muted)}.item{border:1px solid var(--line);border-left:4px solid var(--caution);padding:14px;border-radius:8px;margin-top:12px}.item h3{font-size:17px;margin:0}.item .state{color:var(--caution);font-size:14px;font-weight:600}.item label{display:block;font-size:14px;margin-top:10px}.item button{font-size:14px;padding:7px 10px;min-height:40px}.manual label{display:flex;gap:12px;align-items:flex-start;margin:14px 0}.manual input,.item input{width:20px;height:20px;accent-color:var(--accent);flex-shrink:0}.empty{padding:20px 0;color:var(--muted)}.error{color:#c94535;min-height:24px}details{margin-top:16px}ol{padding-left:22px}.metrics{font-size:13px;color:var(--muted)}footer{padding:20px;text-align:center;color:var(--muted);font-size:13px}
+@media(max-width:900px){main{padding:18px}.grid{grid-template-columns:1fr}header{padding:14px 18px}h1{font-size:25px}.toolbar button,.file{flex-grow:1}}
+</style>
+</head>
+<body>
+<header><strong>ChildSafe</strong><span>Hỗ trợ chuẩn bị góc chơi</span><button id="reset">Phiên mới</button></header>
+<main>
+<h1>Một phút chuẩn bị góc chơi cho con</h1>
+<p class="muted">Đặt camera nhìn xuống bàn. Kiểm tra các vật được đánh dấu và chủ động cất hoặc thay đồ trước khi trẻ tiếp cận.</p>
+<div class="grid">
+<section class="card">
+<h2>Vùng bàn đang rà soát</h2>
+<div class="stage"><video id="video" autoplay playsinline muted hidden></video><img id="photo" alt="Ảnh bàn do bạn chọn" hidden><canvas id="overlay"></canvas><div id="placeholder" class="placeholder">Đặt bàn gọn trong khung hình<br>Bật camera hoặc chọn ảnh để bắt đầu</div></div>
+<div class="toolbar"><button id="camera" class="primary">Bật camera</button><button id="capture" disabled>Chụp ảnh kiểm tra</button><label class="file">Chọn ảnh bàn<input id="upload" type="file" accept="image/jpeg,image/png"></label></div>
+<div class="toolbar"><label>Camera <select id="device"><option value="">Mặc định</option></select></label><label><input id="auto" type="checkbox" checked> Cập nhật tự động</label></div>
+<label>Viền vùng rà soát <span id="insetValue">8%</span> <input id="inset" type="range" min="0" max="30" value="8"></label>
+<p class="note">Chỉ phần bên trong khung nét đứt được phân tích. Đổi camera, viền hoặc vị trí bàn thì bắt đầu phiên mới.</p>
+<p id="source" class="metrics">Camera chưa bật · không ghi hình</p><p id="error" class="error" role="alert"></p>
+<div id="status" class="status" role="status" aria-live="polite">Chưa có ảnh để kiểm tra.</div>
+<p id="timing" class="metrics"></p>
+<details><summary>Phạm vi của bản thử</summary><p id="scope" class="note">Chỉ gợi ý dao, kéo, nĩa nhìn thấy trong vùng rà soát; có thể nhận nhầm hoặc bỏ sót.</p><p class="note">Bút, đồng xu, pin, ổ điện, máy sưởi, kích thước vật và tầm với của trẻ chưa được đánh giá. Không ghi nhận vật không có nghĩa bàn đã an toàn.</p><p class="note">Ảnh chỉ xử lý trong RAM trên máy này; không ghi video, không gửi ảnh lên dịch vụ đám mây. Các xác nhận và lịch sử ở tab này bị xóa khi tải lại trang. Tải JSON nếu bạn muốn giữ số liệu; JSON không chứa ảnh.</p><p id="model" class="metrics"></p></details>
+<details><summary>Cách thử tại bàn trình diễn</summary><ol class="note"><li>Dùng bàn đủ sáng, mặt lót có chi tiết để kiểm tra độ nét; camera giữ cố định phía trên.</li><li>Chỉ dùng đạo cụ mô phỏng an toàn và những lớp đã được kiểm tra. Không đưa vật vào miệng và không cần trẻ tham gia.</li><li>Đặt đạo cụ, xem mục nghi ngờ, rồi cất đạo cụ và quan sát hai lần cập nhật đủ rõ.</li><li>Tự kiểm tra các vật khác. Không dùng màn trình diễn để kết luận hiệu quả phòng ngừa tai nạn.</li></ol></details>
+</section>
+<aside class="stack">
+<section class="card"><h2>Những việc cần bạn kiểm tra</h2><div class="counts"><div><strong id="visibleCount">—</strong><span>Máy đang thấy</span></div><div><strong id="handledCount">0</strong><span>Bạn xác nhận xử lý</span></div></div><p class="note">Tick là xác nhận của bạn. Nếu máy vẫn thấy vật, mục đó tiếp tục được nhắc.</p><div id="items"><p class="empty">Danh sách sẽ xuất hiện sau lần kiểm tra đầu tiên.</p></div></section>
+<section class="card manual"><h2>Phần người lớn tự kiểm tra</h2><p class="note">Các mục này không được AI xác minh.</p><label><input type="checkbox" data-manual="small_objects">Tôi đã kiểm tra riêng vật nhỏ, pin, đồng xu và các vật ngoài ba lớp hỗ trợ.</label><label><input type="checkbox" data-manual="blind_spots">Tôi đã xem phần bị che và khu vực ngoài khung hình.</label><label><input type="checkbox" data-manual="child_context">Tôi đã cân nhắc độ tuổi, khả năng tiếp cận của trẻ và sự phù hợp của đồ chơi.</label><button id="export">Tải số liệu phiên (JSON)</button></section>
+</aside></div>
+</main><footer>Nguyên mẫu đang kiểm chứng · Không chứng nhận an toàn, không đánh giá nghẹn.</footer>
+<script src="/play-area.js"></script>
+</body></html>

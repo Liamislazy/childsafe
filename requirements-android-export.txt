@@ -1,0 +1,5 @@
+# Preserve protobuf used by MediaPipe in the existing runtime environment.
+# Add to requirements-runtime.txt; these are offline export/verification tools.
+onnx==1.17.0
+onnxruntime==1.31.1
+protobuf==4.25.8

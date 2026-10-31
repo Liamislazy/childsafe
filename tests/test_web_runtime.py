@@ -83,7 +83,7 @@ def test_web_runtime_delivers_danger_mask_person_and_notification(monkeypatch):
     finally: demo.close()
 
 
-def test_web_runtime_warns_for_unknown_and_hand_without_mask(monkeypatch):
+def test_web_runtime_accepts_independent_strong_detector_but_not_unlocalized_hand(monkeypatch):
     now = [0.]
     monkeypatch.setattr('childsafe.web.app.time',SimpleNamespace(perf_counter=lambda:now[0]))
     monkeypatch.setattr('childsafe.pipeline.time',SimpleNamespace(perf_counter=lambda:now[0]))
@@ -93,9 +93,12 @@ def test_web_runtime_warns_for_unknown_and_hand_without_mask(monkeypatch):
             for index in range(15):
                 now[0] = index*.1
                 out = client.post('/api/frame',content=image()).json()
-            assert out['level'] == (0 if kind=='empty' else 1)
+            assert out['level'] == {'other':2, 'hand_only':0, 'empty':0}[kind]
             assert not out['green']
-            if kind=='other': assert out['people'][0]['status'] == 'uncertain'
+            if kind=='other':
+                assert out['people'][0]['status'] == 'uncertain'
+                assert out['people'][0]['hazard_source'] == 'detector'
+                assert out['people'][0]['object'] == 'knife'
             if kind=='hand_only': assert not out['people'][0]['mask_reliable']
             if kind=='empty': assert not out['people'] and out['limitations']
         finally: demo.close()

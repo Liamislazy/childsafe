@@ -32,16 +32,32 @@ class FramePipeline:
         self.cfg, self.components = cfg, components
         from childsafe.evaluation.sessions import config_hash,file_hash,code_hash
         from pathlib import Path
-        from childsafe.vision.detection import select_weights
+        from childsafe.vision.detection import select_weights, describe_selection, detector_hash, SupplementalDetector
         weights = select_weights(cfg.get('detector', {}))
+        self.detector_selection = describe_selection(cfg.get('detector', {}))
         self.provenance = dict(config_sha256=config_hash(cfg),code_sha256=code_hash(),
                                classifier_sha256=file_hash(ckpt) if ckpt and Path(ckpt).is_file() else None,
-                               detector_sha256=file_hash(weights) if weights and Path(weights).is_file() else None)
+                               detector_sha256=detector_hash(cfg.get('detector', {})))
         dc = cfg.get('detector', {})
         self.detector = detector if detector is not None else SegmentationDetector(
             weights, dc.get('min_conf', .5),
             object_confidence=dc.get('object_min_conf'), device=dc.get('device', 'auto'),
             imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
+        if detector is None and dc.get('supplemental_weights'):
+            if not dc.get('roi_zoom', False) or dc.get('roi_budget_per_frame', 1) < 1:
+                raise ValueError('supplemental detector requires enabled ROI detection and a positive ROI budget')
+            supplemental = SegmentationDetector(dc['supplemental_weights'],
+                dc.get('supplemental_min_conf', .5), device=dc.get('device', 'auto'),
+                imgsz=dc.get('imgsz', 640), cpu_threads=cfg.get('runtime', {}).get('cpu_threads', 0))
+            self.detector = SupplementalDetector(self.detector, supplemental, self.provenance['detector_sha256'])
+            self.detector_selection['supplemental'] = dict(file=supplemental.weights_file,
+                ready=supplemental.ok, classes=supplemental.names, sha256=supplemental.checksum)
+        if getattr(self.detector, 'checksum', ''):
+            self.provenance['detector_sha256'] = self.detector.checksum
+        if detector is not None and getattr(detector, 'weights_file', None):
+            self.detector_selection.update(file=detector.weights_file,
+                                           device=str(getattr(detector, 'device', 'unknown')),
+                                           fallback=False, selection_reason='explicit_detector')
         if landmark_factory is None:
             def landmark_factory():
                 from childsafe.vision.landmarks import LandmarkDetector
@@ -123,7 +139,7 @@ class FramePipeline:
                 continue
             # A full-frame mask already resolves the held object: do not repeat
             # segmentation just to obtain a second view of the same visible pixels.
-            if dc.get('roi_skip_resolved', True):
+            if dc.get('roi_skip_resolved', True) and not hasattr(self.detector, 'supplemental'):
                 resolved = False
                 for detection in scene.objects:
                     if detection.mask is None or detection.confidence < self.cfg.get('quality', {}).get('min_mask_conf', .6):
@@ -142,7 +158,18 @@ class FramePipeline:
                             break
                 if resolved:
                     continue
-            pts = [hd[:, :2] for hd in lm.hands]
+            hands=lm.hands
+            if dc.get('roi_per_hand',True) and len(hands)>1:
+                cursors=getattr(self,'_roi_hand_cursors',{})
+                cursors={pid:value for pid,value in cursors.items() if pid in {p.person_id for p in active}}
+                order=list(range(len(hands)))
+                if lm.face is not None:
+                    mouth=lm.face[[13,14,78,308],:2].mean(0)
+                    order.sort(key=lambda i:float(np.linalg.norm(hands[i][:,:2]-mouth,axis=1).min()))
+                cursor=cursors.get(track.person_id,0)
+                hands=[hands[order[cursor%len(order)]]]
+                cursors[track.person_id]=cursor+1; self._roi_hand_cursors=cursors
+            pts = [hd[:, :2] for hd in hands]
             if lm.face is not None:
                 pts.append(lm.face[[13, 14, 78, 308], :2])
             pts = np.concatenate(pts)
@@ -154,8 +181,19 @@ class FramePipeline:
             cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
             bx0 = int(min(max(cx - side / 2, 0), w - side)); by0 = int(min(max(cy - side / 2, 0), h - side))
             bx1, by1 = int(bx0 + side), int(by0 + side)
+            full_cost=getattr(self,'timings',{}).get('detector_s',0.)
+            boot_cost=full_cost*1.2*(2 if hasattr(self.detector,'supplemental') else 1)
+            estimated=max(dc.get('roi_min_budget_s',.06),getattr(self,'_roi_cost_s',boot_cost))
+            if deadline is not None and deadline-time.perf_counter()<estimated+.01:
+                self.roi_budget_skips=getattr(self,'roi_budget_skips',0)+1
+                continue
             self.roi_passes+=1
-            for d in self._timed('detector_s',self.detector.detect,np.ascontiguousarray(rgb[by0:by1, bx0:bx1])):
+            detect_roi = getattr(self.detector, 'detect_roi', self.detector.detect)
+            roi_start=time.perf_counter()
+            roi_detections=self._timed('detector_s',detect_roi,np.ascontiguousarray(rgb[by0:by1, bx0:bx1]))
+            cost=time.perf_counter()-roi_start
+            self._roi_cost_s=.8*getattr(self,'_roi_cost_s',cost)+.2*cost
+            for d in roi_detections:
                 if d.label == 'person':
                     continue
                 box = (d.box[0] + bx0, d.box[1] + by0, d.box[2] + bx0, d.box[3] + by0)
@@ -165,7 +203,7 @@ class FramePipeline:
                     mask[by0:by0 + d.mask.shape[0], bx0:bx0 + d.mask.shape[1]] = d.mask
                 obj = replace(d, box=box, mask=mask)
                 same = [k for k, o in enumerate(scene.objects) if iou(o.box, box) > .5]
-                if same and all(scene.objects[k].confidence >= obj.confidence for k in same):
+                if same and obj.source != 'supplemental' and all(scene.objects[k].confidence >= obj.confidence for k in same):
                     continue
                 scene.objects = [o for k, o in enumerate(scene.objects) if k not in same] + [obj]
                 found += 1
@@ -216,24 +254,29 @@ class FramePipeline:
             self._release_landmarks(state)
         self.states.clear()
         self.tracker.reset()
+        self._roi_hand_cursors={}; self._hand_retry_cursor=0
         self.session_id = self.session_id + 1 if session_id is None else session_id
 
     def _timed(self, stage, function, *args, **kwargs):
         if stage=='detector_s':
-            self.detector_calls=getattr(self,'detector_calls',0)+1
+            count = 2 if getattr(function, '__name__', '') == 'detect_roi' else 1
+            self.detector_calls=getattr(self,'detector_calls',0)+count
         start = time.perf_counter()
         try:
             return function(*args, **kwargs)
         finally:
             if not hasattr(self,'timings'):
                 self.timings = {}
-            self.timings[stage] = self.timings.get(stage,0.) + time.perf_counter()-start
+            elapsed=time.perf_counter()-start
+            self.timings[stage] = self.timings.get(stage,0.) + elapsed
+            if stage=='classifier_s':
+                self._classifier_cost_s=.8*getattr(self,'_classifier_cost_s',elapsed)+.2*elapsed
 
     def process(self, rgb, t, *, received_t=None, frame_age_s=0., frame_valid=True, source_ok=True,
                 processing_deadline=None):
         start = time.perf_counter()
         self.timings = {}
-        self.detector_calls,self.roi_passes=0,0
+        self.detector_calls,self.roi_passes,self.roi_budget_skips=0,0,0
         import copy
         prior_processors = ({pid:copy.deepcopy(state['processor']) for pid,state in self.states.items()}
                             if processing_deadline is not None else {})
@@ -243,6 +286,11 @@ class FramePipeline:
         scene = SceneLandmarks()
         detections = self._timed('detector_s',self.detector.detect,rgb) if valid and source_ok else []
         active, retired = self.tracker.update(detections, t) if valid and source_ok else ([], set())
+        retry_pid=None
+        if active:
+            retry_index=getattr(self,'_hand_retry_cursor',0)%len(active)
+            retry_pid=active[retry_index].person_id
+            self._hand_retry_cursor=(retry_index+1)%len(active)
         active_now = {track.person_id for track in active}
         for pid, state in self.states.items():   # release first, so new IDs reuse these instances
             if pid not in active_now:
@@ -267,8 +315,11 @@ class FramePipeline:
             if (state['landmarks'] is not None and box[2] > box[0] and box[3] > box[1]
                     and (processing_deadline is None or time.perf_counter()<processing_deadline)):
                 try:
+                    landmark_cfg=dict(self.cfg.get('landmarks',{}))
+                    landmark_cfg['hand_roi_retry']=bool(landmark_cfg.get('hand_roi_retry',False)
+                        and pid==retry_pid and not track.ambiguous)
                     lm = self._timed('landmarks_s',detect_person,state['landmarks'],rgb,box,t,
-                                     self.cfg.get('landmarks',{}),len(active)==1 and not track.ambiguous)
+                                     landmark_cfg,len(active)==1 and not track.ambiguous,processing_deadline)
                     scene.people[pid] = lm
                     state['error'] = ''
                 except Exception as exc:
@@ -314,6 +365,9 @@ class FramePipeline:
                      scene_objects=len(scene.objects), roi_objects=roi_found,
                      scene_object_labels=';'.join(f'{d.label}:{d.confidence:.2f}' for d in scene.objects),
                      assigned_objects=len(assigned[pid]))
+            f.update(hand_roi_attempted=bool(getattr(lm,'hand_roi_attempted',False)),
+                     hand_roi_found=int(getattr(lm,'hand_roi_found',0)),
+                     hand_roi_error=getattr(lm,'hand_roi_error',''))
             obj_result = None
             # Landmarks are in original coordinates; quality crops must use that same image.
             f.update(self._timed('quality_s',state['quality'].measure,rgb,lm,f))
@@ -350,8 +404,10 @@ class FramePipeline:
                           0 <= t-last[0] < self.cfg.get('cascade', {}).get('classify_interval_s', .1) and
                           iou(last[1], obj.box) >= .5)
                 # Same object classified moments ago: the processor keeps that result (valid 1 s).
+                classification_budget=max(self.cfg.get('cascade',{}).get('classify_min_budget_s',.04),
+                                          getattr(self,'_classifier_cost_s',0.))+.01
                 if (self.classifier is not None and pid not in ambiguous and not recent
-                        and (processing_deadline is None or time.perf_counter()<processing_deadline)):
+                        and (processing_deadline is None or processing_deadline-time.perf_counter()>=classification_budget)):
                     try:
                         box = tuple(int(v) for v in obj.box)
                         box = (max(0,box[0]),max(0,box[1]),min(w,box[2]),min(h,box[3]))
@@ -384,6 +440,7 @@ class FramePipeline:
             if f['mask_reliable'] and not f['mask_temporally_stable']:
                 f['quality_reasons'].append('object mask not temporally stable')
             f['object_present'] = obj is not None
+            f['object_detector_source'] = obj.source if obj is not None else ''
             f.setdefault('evidence_source', 'mask' if f.get('proximity_evidence') else '')
             d_object = (f['object_d_relative'] if f.get('proximity_evidence')
                         else f.get('candidate_object_d_relative', math.nan))
@@ -401,8 +458,7 @@ class FramePipeline:
                 state['obj_result'] = (t, obj_result)
             # Classification cannot upgrade a weak mask/box or hand position to contact evidence.
             f['d_object'], f['d_hand'] = d_object, hand_distance
-            f['distance_source'] = ('object' if math.isfinite(d_object) and
-                                    (not math.isfinite(hand_distance) or d_object <= hand_distance) else 'hand')
+            f['distance_source'] = 'object' if math.isfinite(d_object) else 'hand'
             if not f['proximity_evidence'] and (obj is not None or suspicious_hand):
                 f['quality_reasons'].append('no reliable held-object mask evidence')
             f['classifier_ok'] = self.classifier is not None and not state['classifier_error']
@@ -413,7 +469,7 @@ class FramePipeline:
                 self._clear_classification(state)
                 state['mask_evidence'].reset()
             out = state['processor'].step(f, obj_result)
-            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version')})
+            f.update({k:out[k] for k in ('hazard_status','hazard_type','hazard_policy_version','hazard_source','risk_distance_source')})
             out.update(person_id=pid, box=track.box, session_id=self.session_id, visible=True)
             state['box'] = track.box
             f.update({k: obj_result.get(k, math.nan) if obj_result else ('' if k == 'obj_class' else math.nan)
@@ -431,6 +487,7 @@ class FramePipeline:
                      person_left=pid in retired, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s)
             f['object_present'] = False
+            f.update(hand_roi_attempted=False,hand_roi_found=0,hand_roi_error='')
             f['tracked'] = False   # held ID, not detected in this frame
             f.update(proximity_evidence=False,mask_reliable=False,object_d_relative=math.nan,
                      object_d_px=math.nan,detector_ok=self.detector.ok,
@@ -500,7 +557,8 @@ class FramePipeline:
             f['peak_process_memory_bytes'] = memory
         for f in rows:
             f.update(self.provenance)
-            f.update(detector_calls=self.detector_calls,roi_detector_calls=self.roi_passes)
+            f.update(detector_calls=self.detector_calls,roi_detector_calls=self.roi_passes,
+                     roi_budget_skips=self.roi_budget_skips)
         return scene, rows[0] if rows else {}, aggregate
 
     def close(self):

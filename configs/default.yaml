@@ -92,6 +92,12 @@ landmarks:
   zoom_below_frac: 0.6
   zoom_target_px: 640
   zoom_max_scale: 3.0
+  hand_roi_retry: true       # if hands are missed: one person per frame gets a bounded hand-only crop retry
+  hand_roi_scale: 3.0
+  hand_roi_min_px: 128
+  hand_roi_min_face_px: 40   # original pixels; enlargement never restores missing detail
+  hand_roi_max_frame_frac: 0.35
+  hand_roi_budget_s: 0.045   # require this much deadline headroom before optional work
 
 smoothing:
   method: one_euro          # none | ema | one_euro
@@ -117,7 +123,8 @@ cascade:                    # D2
   enabled: true
   d_far: 1.2                # run Module A only when normalized distance < d_far
   classify_every_n: 3       # and at most every N frames (cached in between)
-  classify_interval_s: 0.1
+  classify_interval_s: 0.3   # reuse only a recent same-object crop; changes clear the cache
+  classify_min_budget_s: 0.04 # skip optional crop classification rather than expire the whole frame
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 hazard_policy:
@@ -126,16 +133,32 @@ hazard_policy:
   # Toy/fruit/spoon labels do not establish suitability, size or absence of fragments.
   # Socket/heater categories require different contextual detectors, not mouth rules.
   mouth_hazards: {knife: sharp_object, fork: pointed_object, scissors: sharp_object}
+  # Detector evidence is independent of the old 11-class crop classifier. A strong,
+  # stable mask for these classes may warn even when the crop says "other".
+  detector_min_conf: 0.75   # starting value; validate on dev, not a calibrated probability
+  supplemental_hazards:
+    pen: pointed_object
+    pencil: pointed_object
+    chopsticks: pointed_object
+    coin: small_object
+    button_battery: battery
+    cylindrical_battery: battery
+    screw: pointed_object
+    nail: pointed_object
+    safety_pin: pointed_object
+    needle: pointed_object
+    marble: small_object
+    small_toy_piece: small_object
 
 rules:                      # D3
   p_unsafe_danger: 0.60     # calibrated P(unsafe) needed for danger
   dwell_danger_s: 0.5       # near for at least this long before danger
   dwell_safe_caution_s: 3.0 # legacy CSV only; modern proximity requests caution regardless of category
   ttc_caution_s: 0.8        # unsafe object approaching with time-to-contact below this -> caution
-  # YOLO misses most small held objects; then classify the area around the hand (original Module B).
-  # Only a confident unsafe result counts as evidence (stricter than the 0.6 mask path). UNTUNED.
-  hand_crop_fallback: true
-  caution_hold_s: 1.5       # keep CAUTION through flickering evidence unless a departure is observed. UNTUNED
+  # A hand-crop guess is diagnostic only; save CPU by disabling it in the live profile.
+  hand_crop_fallback: false
+  caution_evidence_s: 0.15  # sustained localized candidate; a bare hand never starts an alert. UNTUNED
+  caution_hold_s: 1.5       # missing object/mouth is capped by smoothing.lost_hold_s; no hand-only renewal
   hand_crop_min_p_unsafe: 0.8
   # A knife or scissors that YOLO links to a person's hand is DANGER wherever the hand is; no mouth
   # proximity needed (product decision 2026-10-26). Uses YOLO's COCO label, not the classifier.
@@ -151,7 +174,7 @@ rules:                      # D3
   held_sharp_max_gap_s: 0.5
 
 runtime:
-  cpu_threads: 0            # keep library defaults; optional measured CPU budget (training unaffected)
+  cpu_threads: 0            # measured here: forcing 2 was slower; CLI can override per machine
   max_people: 4
   primary_person_only: false # opt-in (--single-person): follow only the largest person; not for doll/child-next-to-adult tests
   identity_hold_s: 3.0       # retain model/ID across slow frames; does not extend risk evidence
@@ -179,10 +202,16 @@ detector:
   roi_zoom: true
   roi_skip_resolved: true   # skip the extra pass when a confident held mask is already near the mouth
   roi_budget_per_frame: 1   # at most one optional crop pass; rotate people to avoid starvation
+  roi_min_budget_s: 0.06    # also require an estimate of the next detector pass plus margin
   roi_scale: 1.8            # crop side = hands+mouth extent x this
+  roi_per_hand: true       # alternate hand+mouth crops; do not combine widely separated hands
   roi_min_px: 192
   roi_max_frame_frac: 0.5   # skip when the crop would cover most of the frame
   complete_object_coverage: false # COCO excludes coins/pens; never infer their location
+  # Optional locally trained object-only model. Keep the person model above.
+  # Never downloaded/selected automatically; no new learned class without weights.
+  supplemental_weights: null
+  supplemental_min_conf: 0.5
 
 quality:
   calibrated: false

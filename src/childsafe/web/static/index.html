@@ -68,11 +68,19 @@
 <body>
 <header>
   <h1>ChildSafe — thử cảnh báo camera</h1>
-  <span class="privacy">Xử lý trên máy này; ảnh chỉ nằm trong RAM, không lưu video.</span>
+  <a class="btn ghost" href="/play-area">Chuẩn bị góc chơi</a>
+  <span class="privacy">Xử lý trên máy này; không ghi video. Chỉ tải ảnh kiểm tra khi bạn bấm.</span>
 </header>
 
 <main>
-  <p class="note">Theo dõi từng người, tay, miệng và mask vật. Tay hoặc vùng vật nghi ngờ sát miệng có thể tạo cảnh giác. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
+  <details class="card" id="productScope">
+    <summary>Phạm vi hỗ trợ và cách đọc cảnh báo</summary>
+    <p id="scopePurpose" class="note">Hỗ trợ người chăm sóc chú ý khi vật cầm tay tiến sát vùng miệng trên ảnh.</p>
+    <p id="scopeObjects" class="note"></p>
+    <p class="note">Không xác nhận tiếp xúc, nuốt hay nghẹn. Quay lưng hoặc che miệng có thể làm bỏ sót. Nguyên mẫu chưa được kiểm chứng để sử dụng thực tế.</p>
+    <p id="activeDetector" class="note"></p>
+  </details>
+  <p class="note">Theo dõi từng người, tay, miệng và vùng vật. Tay gần mặt đơn thuần không tạo cảnh báo; vật nghi ngờ gần miệng cần xuất hiện qua thời gian. Bút/đũa/đồng xu chưa có detector riêng; nhãn vật có thể sai. Chỉ thử với đạo cụ an toàn.</p>
   <section id="live" class="grid">
     <div class="card">
       <div class="stage"><video id="video" playsinline muted></video><canvas id="overlay"></canvas></div>
@@ -80,6 +88,8 @@
         <button id="startBtn" class="btn">Bật camera</button>
         <button id="resetBtn" class="btn ghost">Đặt lại cảnh báo</button>
         <a class="btn ghost" href="/api/session.csv" download="camera_session.csv">Tải số liệu phiên</a>
+        <button id="snapshotBtn" class="btn ghost" disabled>Tải ảnh kiểm tra</button>
+        <span id="snapshotStatus" class="note"></span>
         <label><input id="sound" type="checkbox" checked> Âm báo khi cần chú ý</label>
         <button id="testSound" class="btn ghost">Thử âm báo</button>
         <label>Thử giảm chất lượng ảnh
@@ -111,7 +121,15 @@
 const $ = id => document.getElementById(id);
 let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
 let runToken = 0, lastReply = 0, audioContext = null, lastBeep = 0, lastLevel = 0;
-let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1;
+let cameraToken = '', sequence = 0, lastSync = 0, lastMediaFrame = -1, latestMediaFrame = -1;
+function observeVideoFrames(v,generation) {
+  if (!v.requestVideoFrameCallback) return;
+  v.requestVideoFrameCallback((_,metadata)=>{
+    if (generation !== runToken) return;
+    latestMediaFrame=metadata.presentedFrames;
+    observeVideoFrames(v,generation);
+  });
+}
 async function cameraClock(renew=false, generation=runToken) {
   const sent = performance.now()/1000;
   const q = new URLSearchParams({client_t:sent});
@@ -132,6 +150,9 @@ async function cameraClock(renew=false, generation=runToken) {
 }
 async function nextFrame(v) {
   if (v.requestVideoFrameCallback) {
+    // Inference may span several camera frames. Use the latest already
+    // presented frame immediately instead of waiting for one more presentation.
+    if (latestMediaFrame > lastMediaFrame) { lastMediaFrame=latestMediaFrame; return true; }
     const metadata = await new Promise(resolve => v.requestVideoFrameCallback((_,m)=>resolve(m)));
     if (metadata.presentedFrames <= lastMediaFrame) return false;
     lastMediaFrame = metadata.presentedFrames;
@@ -145,6 +166,15 @@ const LEVEL_COLOR = () => getComputedStyle(document.documentElement);
 
 async function loadInfo() {
   info = await (await fetch("/api/info")).json();
+  if (info.product_scope) {
+    $('scopePurpose').textContent=info.product_scope.purpose;
+    $('scopeObjects').textContent='Phạm vi nguy cơ cao: '+info.product_scope.high_alert_names.join(', ')+
+      '. Model bổ sung có lớp: '+(info.product_scope.additional_detector_names.join(', ') || 'chưa nạp')+
+      '. Cần dữ liệu và train thêm: '+info.product_scope.pending_training_names.join(', ')+
+      '. '+info.product_scope.class_limit;
+  }
+  if (info.detector?.file) $('activeDetector').textContent='Detector được chọn: '+info.detector.file+
+    ' · thiết bị yêu cầu: '+info.detector.device+(info.detector.fallback ? ' · đang dùng model thay thế vì model GPU không sẵn sàng.' : '.');
   for (const sel of [$("kind")])
     for (const k of info.corruptions) sel.insertAdjacentHTML("beforeend", `<option value="${k}">${k.replace("_", " ")}</option>`);
   $("runtimeStatus").textContent = 'Sẵn sàng — '+info.live_model+'. Bật camera để kiểm tra người, tay, miệng và vật.';
@@ -175,12 +205,14 @@ async function start() {
     if (generation === runToken) { stop(); $("liveErr").textContent=e.message; } return;
   }
   if (generation !== runToken) return;
-  sequence = 0; lastMediaFrame = -1;
+  sequence = 0; lastMediaFrame = latestMediaFrame = -1;
+  observeVideoFrames($("video"),generation);
   if ($('sound').checked) {
     if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
     audioContext.resume().catch(()=>{ $('sound').checked=false; });
   }
   starting = false; running = true; lastReply = performance.now(); lastLevel = 0;
+  $('snapshotBtn').disabled=false;
   frames = 0; lastFpsT = performance.now();
   $("startBtn").textContent = "Tắt camera"; loop(runToken);
 }
@@ -189,6 +221,7 @@ function stop() {
   if (cameraToken) fetch('/api/camera/end?'+new URLSearchParams({token:cameraToken}),{method:'POST'});
   cameraToken = '';
   running = false; runToken++; $("startBtn").textContent = "Bật camera";
+  $('snapshotBtn').disabled=true;
   if (stream) stream.getTracks().forEach(t => t.stop());
   const ctx = $("overlay").getContext("2d"); ctx.clearRect(0, 0, 9999, 9999); $("stats").textContent = "Camera đã tắt";
   $("runtimeStatus").textContent = 'Camera đã tắt'; $("liveModels").replaceChildren();
@@ -199,7 +232,7 @@ async function loop(token) {
   const v = $("video");
   try {
     if (performance.now()-lastSync > 15000) await cameraClock(true,token);
-    if (!await nextFrame(v)) { requestAnimationFrame(()=>loop(token)); return; }
+    if (!await nextFrame(v)) { setTimeout(()=>loop(token),0); return; }
   } catch(e) { if (token === runToken) { stop(); $("liveErr").textContent=e.message; } return; }
   if (!running || token !== runToken) return;
   const captureT = performance.now()/1000; // browser snapshot time, not sensor capture
@@ -239,7 +272,9 @@ async function loop(token) {
     $('liveModels').replaceChildren();
     $('overlay').getContext('2d').clearRect(0,0,$('overlay').width,$('overlay').height);
   }
-  requestAnimationFrame(() => loop(token));
+  // Camera frames already pace nextFrame(). An extra rendering callback can
+  // throttle inference when the browser deprioritizes painting this panel.
+  setTimeout(() => loop(token),0);
 }
 
 function beep(level) {
@@ -248,6 +283,22 @@ function beep(level) {
   oscillator.frequency.value = level === 2 ? 880 : 520;
   gain.gain.value = .08; oscillator.connect(gain); gain.connect(audioContext.destination);
   oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
+}
+async function downloadSnapshot() {
+  const v=$('video'),generation=runToken;
+  if (!running || !v.videoWidth || !v.videoHeight) return;
+  const canvas=document.createElement('canvas'); canvas.width=v.videoWidth; canvas.height=v.videoHeight;
+  const context=canvas.getContext('2d',{alpha:false});
+  context.setTransform(-1,0,0,1,canvas.width,0); context.drawImage(v,0,0);
+  const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+  if (!blob || !running || generation!==runToken) return;
+  // Explicit user click only. No overlay/predicted labels, upload, automatic
+  // recording or use of this frame as training ground truth.
+  const url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=`childsafe_frame_${Date.now()}.png`;
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),3000);
+  $('snapshotStatus').textContent='Đã tải ảnh camera nguyên khung; bạn tự kiểm tra và gán nhãn.';
 }
 // ---------- stable labels (display only) ----------
 // YOLO and the classifier re-guess every frame, so one object's name used to flip constantly. A shown
@@ -296,6 +347,7 @@ function renderRuntime(res) {
   const heading = document.createElement('h3');
   heading.textContent = allInconclusive ? 'Mức: KHÔNG KẾT LUẬN' : `Mức: ${names[res.level]}`;
   heading.style.color = res.level === 0 && !res.green ? '#64748b' : colors[res.level]; status.append(heading);
+  if (res.caregiver_action) { const action=document.createElement('p'); action.textContent=res.caregiver_action; status.append(action); }
   if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
   const summary = document.createElement('p');
   summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
@@ -305,7 +357,7 @@ function renderRuntime(res) {
   for (const person of res.people) {
     // Missing values vote too, so a single missed frame does not blank the line.
     const objectName = stableLabel('object'+person.track_id,
-      person.object_localized ? heldName(person.object || 'chưa rõ loại', person.yolo_label) : 'chưa có', now, used);
+      person.object_localized ? heldName(person.class || person.object || 'chưa rõ loại', person.yolo_label) : 'chưa có', now, used);
     const yoloGuess = stableLabel('yolo'+person.track_id, person.object_localized ? person.yolo_label : '', now, used);
     const [className, classStatus] = stableLabel('class'+person.track_id,
       (person.class || 'chưa có')+'|'+person.status, now, used).split('|');
@@ -315,15 +367,17 @@ function renderRuntime(res) {
     const level=document.createElement('div'); level.className='level '+(unseen ? 'limited' : person.level_name);
     level.textContent=unseen ? 'KHÔNG KẾT LUẬN · camera không nhìn rõ'
                              : names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
-    if (person.level===0 && !person.green && !unseen) level.style.color='#64748b';
+    if (person.level===0 && !person.green) { level.style.color='#cbd5e1'; level.style.background='#334155'; }
     card.append(level);
-    const messages = [`Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
+    const messages = [person.caregiver_action, `Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
       `Vật định vị: ${objectName}${yoloGuess && yoloGuess !== objectName ? ` (YOLO đoán: ${yoloGuess})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
+      `Vị trí nghi ngờ lấy từ: ${{mask:'vùng mask',box:'hộp vật — chỉ cảnh giác'}[person.candidate_localization] || 'chưa đo được'}${person.hand_roi_attempted ? ' · Tìm tay vùng nhỏ: '+(person.hand_roi_error ? 'gặp lỗi' : person.hand_roi_found+' tay') : ''}`,
       `Phân loại: ${className} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[classStatus] || classStatus})`,
+      `Nguồn đánh giá loại nguy cơ: ${{detector:'detector độc lập với classifier',classifier:'classifier',conflict:'hai model khác nhau — chỉ cảnh giác',none:'chưa đủ'}[person.hazard_source] || 'chưa đủ'} · Điểm detector: ${person.object_confidence == null ? '—' : person.object_confidence.toFixed(2)} (không phải xác suất nguy hiểm)`,
       `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
       `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
-      `Dùng: ${person.d_source === 'object' ? 'vật' : 'tay'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
+      `Khoảng cách dùng cho cảnh báo: ${{object:'vật',hand:'tay (legacy)',none:'chưa có bằng chứng vị trí vật'}[person.d_source] || 'chưa rõ'} (${person.d == null ? 'chưa đo được' : person.d.toFixed(2)}) · Gần: ${person.near ? 'có' : 'không'} · Dwell: ${person.dwell.toFixed(1)}s`,
       person.reason, ...person.reasons];
     for (const message of messages.filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; card.append(p); }
     $('liveModels').append(card);
@@ -388,6 +442,7 @@ document.addEventListener('visibilitychange',()=>{
   if (document.hidden && (running || starting)) { stop(); $('liveErr').textContent='Camera đã tạm dừng khi tab bị ẩn; bật lại để tạo phiên mới.'; }
 });
 $("startBtn").onclick = start;
+$('snapshotBtn').onclick=downloadSnapshot;
 $("testSound").onclick = async () => {
   if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
   await audioContext.resume(); beep(1);

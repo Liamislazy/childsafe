@@ -94,7 +94,8 @@ def test_classifier_failure_clears_old_unsafe_cache_and_recovers():
     def classify(*args):
         if fail[0]: raise RuntimeError('private data')
         return result()
-    pipe = FramePipeline(configuration(), None, detector=Detector(), landmark_factory=Face, classifier=classify)
+    cfg = configuration(); cfg['cascade']['classify_interval_s'] = .1
+    pipe = FramePipeline(cfg, None, detector=Detector(), landmark_factory=Face, classifier=classify)
     try:
         pipe.process(RGB, 0.)
         fail[0] = True

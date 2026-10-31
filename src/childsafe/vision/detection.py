@@ -16,6 +16,7 @@ class Detection:
     label: str
     confidence: float
     mask: np.ndarray | None = None  # full-image binary mask (objects only; people use the box)
+    source: str = 'primary'
 
 
 def _pick_device(device):
@@ -42,6 +43,25 @@ def select_weights(dc):
     return weights
 
 
+def describe_selection(dc):
+    """Explain automatic selection using file names only, without loading a model.
+
+    This is configuration/device information, not evidence of successful inference.
+    A missing GPU model must be visible when a CUDA machine falls back to the base model.
+    """
+    selected = select_weights(dc)
+    requested = dc.get('weights_gpu')
+    device = _pick_device(dc.get('device', 'auto'))
+    gpu_device = device not in (None, '', 'auto', 'cpu')
+    fallback = bool(gpu_device and requested and str(selected) != str(requested))
+    return dict(file=Path(selected).name, device=str(device),
+                gpu_file=Path(requested).name if requested else None,
+                fallback=fallback,
+                selection_reason=('gpu_weights_missing_or_device_not_supported' if fallback else
+                                  'gpu_weights_selected' if requested and str(selected)==str(requested) else
+                                  'base_weights_selected'))
+
+
 class SegmentationDetector:
     supports_roi = True   # FramePipeline may run a second, zoomed pass on hands/mouth crops
     def __init__(self, path, confidence=.5, object_confidence=None, device='auto', imgsz=640, cpu_threads=None):
@@ -56,13 +76,16 @@ class SegmentationDetector:
         self.device = 'cpu'
         self.imgsz = imgsz
         self.cpu_threads = cpu_threads
+        self.weights_file = Path(path).name
         try:
             p = Path(path)
             if not p.is_file():
                 raise FileNotFoundError('local segmentation weights missing')
             self.checksum = hashlib.sha256(p.read_bytes()).hexdigest()
             from ultralytics import YOLO
-            self.model = YOLO(str(p), task='segment')
+            self.model = YOLO(str(p))
+            if self.model.task not in ('detect', 'segment'):
+                raise ValueError('expected object detection or segmentation weights')
             self.device = _pick_device(device)
         except Exception as exc:
             self.error = type(exc).__name__  # never log source credentials or exception URLs
@@ -111,3 +134,54 @@ class SegmentationDetector:
     @property
     def ok(self):
         return self.model is not None and not self.error
+
+    @property
+    def names(self):
+        return list(self.model.names.values()) if self.model is not None else []
+
+
+def detector_hash(dc):
+    """Stable provenance for primary + optional supplemental weights, never credentials."""
+    paths = [select_weights(dc)]
+    if dc.get('supplemental_weights'):
+        paths.append(dc['supplemental_weights'])
+    hashes = [hashlib.sha256(Path(p).read_bytes()).hexdigest() if Path(p).is_file() else 'missing'
+              for p in paths]
+    if len(hashes) == 1:
+        return hashes[0] if hashes[0] != 'missing' else None
+    return hashlib.sha256('|'.join(hashes).encode()).hexdigest()
+
+
+class SupplementalDetector:
+    """Preserve person detection; run the custom object head on bounded hand/mouth ROIs.
+
+    An object-only checkpoint must never replace the person model. Box-only
+    checkpoints retain mask=None and can request CAUTION, never mask confirmation.
+    """
+    supports_roi = True
+
+    def __init__(self, primary, supplemental, checksum):
+        self.primary, self.supplemental, self.checksum = primary, supplemental, checksum
+        self.weights_file, self.device = primary.weights_file, primary.device
+
+    def detect(self, rgb):
+        return self.primary.detect(rgb)
+
+    def detect_roi(self, rgb):
+        base = self.primary.detect(rgb)
+        from dataclasses import replace
+        extra = [replace(d, source='supplemental') for d in self.supplemental.detect(rgb) if d.label != 'person']
+        from childsafe.vision.tracking import iou
+        return [d for d in base if d.label == 'person' or not any(iou(d.box, e.box) > .5 for e in extra)] + extra
+
+    @property
+    def ok(self):
+        return self.primary.ok and self.supplemental.ok
+
+    @property
+    def error(self):
+        return self.primary.error or self.supplemental.error
+
+    @property
+    def names(self):
+        return list(dict.fromkeys(self.primary.names + self.supplemental.names))

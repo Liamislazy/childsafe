@@ -31,6 +31,7 @@ from childsafe.vision.tracking import iou
 from childsafe.runtime.browser import BrowserLease, FrameRejected, SessionEpoch
 from childsafe.web.labels import reason_vi
 from childsafe.evaluation.sessions import file_hash,config_hash,code_hash
+from childsafe.product import product_scope, caregiver_action
 
 STATIC = Path(__file__).parent / "static"
 
@@ -162,8 +163,10 @@ class RuntimeDemo(Demo):
         self.paths = {self.live_name: models[self.live_name]}
         self.classifiers = {self.live_name: ObjectClassifier(self.paths[self.live_name])}
         self.pipeline = FramePipeline(cfg, None, classifier=self.classifiers[self.live_name])
-        self.provenance = {'config_sha256':config_hash(cfg),'code_sha256':code_hash(),'classifier_sha256':file_hash(models[self.live_name]),
-                           'detector_sha256':file_hash(cfg['detector']['weights']) if Path(cfg['detector']['weights']).is_file() else None}
+        # The pipeline selects the active CPU/GPU weights. Do not replace its hash
+        # with the configured CPU model when automatic selection used s/m on CUDA.
+        self.provenance = dict(self.pipeline.provenance,
+                               classifier_sha256=file_hash(models[self.live_name]))
         self.pipeline.provenance = self.provenance
         self.t0 = time.perf_counter()
         self.rows = []
@@ -252,27 +255,35 @@ class RuntimeDemo(Demo):
             features = next((f for f in out['feature_rows'] if f['person_id'] == pid), {})
             people.append({
                 'id': slots[pid], 'track_id': pid, 'box': scene.boxes.get(pid),
+                'caregiver_action':caregiver_action(person['level'], person['observation'], person['green']),
                 'level': person['level'], 'level_name': LEVEL_NAMES[person['level']],
                 'observation': person['observation'], 'green': person['green'],
                 'image_observation':person['image_observation'],
                 'validation_status':person['validation_status'], 'object_scope':person['object_scope'],
-                'reason': person['reason'], 'reasons': [reason_vi(r) for r in person['observation_reasons']],
+                'reason': reason_vi(person['reason']), 'reasons': [reason_vi(r) for r in person['observation_reasons']],
                 'face': bool(lm is not None and lm.face is not None),
                 'mouth_visible': bool(features.get('mouth_visible')),
                 'hands': [h[:,:2].round(1).tolist() for h in lm.hands] if lm else [],
+                'hand_roi_attempted':bool(features.get('hand_roi_attempted')),
+                'hand_roi_found':int(features.get('hand_roi_found',0)),
+                'hand_roi_error':features.get('hand_roi_error',''),
                 'mouth': lm.face[MOUTH,:2].mean(0).round(1).tolist() if lm is not None and lm.face is not None else None,
-                # Our classifier names the object; YOLO's COCO label is only a hint (COCO has no
-                # pen, so its 'toothbrush' class is shown as 'pen', see vision.detection).
-                'object': person['obj_class'] or ('vật trong tay' if features.get('object_present') else ''),
+                # Show each model's prediction independently; an old crop's "other"
+                # must not replace the category of the localized detector region.
+                'object': features.get('object_label') or ('vật trong tay' if features.get('object_present') else ''),
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'object_localized':bool(features.get('object_present')),
                 'object_box':_held_box(self.pipeline,pid) if features.get('object_present') else None,
                 'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
+                'candidate_localization':features.get('candidate_localization',''),
+                'object_mask_pixels':features.get('object_mask_pixels',0),
                 'class': person['obj_class'], 'status': person['obj_status'],
                 'hazard_status':person['hazard_status'], 'hazard_type':person['hazard_type'],
+                'hazard_source':person.get('hazard_source', 'none'),
+                'object_confidence':_nan_to_none(features.get('object_conf', math.nan)),
                 'p_unsafe': _nan_to_none(person['p_unsafe']),
-                'd': _nan_to_none(person['d']), 'd_source': features.get('distance_source', 'hand'),
+                'd': _nan_to_none(person['d']), 'd_source': person.get('risk_distance_source', 'none'),
                 'd_hand': _nan_to_none(features.get('d_hand', math.nan)),
                 'd_object': _nan_to_none(features.get('d_object', math.nan)),
                 'near': bool(person['near']),
@@ -288,13 +299,23 @@ class RuntimeDemo(Demo):
                     polygon = cv2.approxPolyDP(contour, .003*cv2.arcLength(contour, True), True)[:,0,:].tolist()
             objects.append({'label':obj.label, 'confidence':obj.confidence, 'box':list(obj.box), 'mask':polygon})
         detector = self.pipeline.detector
-        limitations = ['Chưa hiệu chuẩn camera; đũa, bút và đồng xu chưa có detector riêng.']
+        scope = product_scope(self.cfg, self.pipeline.detector)
+        limitations = ['Chưa hiệu chuẩn camera.']
+        if scope['unlocalized_examples']:
+            limitations.append('Chưa có model nhận riêng: '+', '.join(scope['unlocalized_examples'])+'.')
+        if hasattr(self.pipeline.detector, 'supplemental') and not self.pipeline.detector.supplemental.ok:
+            limitations.append('Model vật bổ sung lỗi hoặc thiếu; không tính các lớp mới là đang hoạt động.')
+        selection = getattr(self.pipeline, 'detector_selection', {})
+        if selection.get('fallback'):
+            limitations.append('Không dùng được detector GPU đã cấu hình; đang dùng '+selection['file']+'.')
         if self.recording_full:
             limitations.append('Bộ nhớ số liệu đã đầy: tải phiên hiện tại rồi Reset alerts để bắt đầu phiên mới.')
         if not detector.ok:
             limitations.append('Detector không sẵn sàng: '+getattr(detector,'error',''))
         if not people:
             limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
+        if any(row.get('roi_budget_skips',0) for row in out['feature_rows']):
+            limitations.append('Thiếu thời gian để dò vật trong vùng nhỏ ở ảnh này; có thể bỏ sót vật ở xa.')
         max_gap = self.cfg['temporal'].get('max_gap_s',.25)
         if frame_gap > max_gap or out['inference_s'] > max_gap:
             limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
@@ -304,6 +325,7 @@ class RuntimeDemo(Demo):
                 'width':rgb.shape[1], 'height':rgb.shape[0], 'people':people, 'objects':objects,
                 'level':out['level'], 'level_name':LEVEL_NAMES[out['level']],
                 'green':out['green'], 'observation':out['observation'],
+                'caregiver_action':caregiver_action(out['level'], out['observation'], out['green']),
                 'reason':reason_vi(out['reason']), 'limitations':limitations,
                 'notify':any(p['notify'] for p in people),
                 'detector_ok':detector.ok, 'classifier_ok':self.pipeline.classifier is not None and not self.pipeline.classifier_error,
@@ -313,6 +335,8 @@ class RuntimeDemo(Demo):
 
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
+    from childsafe.web.play_area import PlayAreaScanner, play_area_router
+    app.include_router(play_area_router(PlayAreaScanner(demo.cfg)))
     processing = asyncio.Lock()
     lease = BrowserLease(demo.cfg.get('runtime',{}).get('stale_frame_s',.25), clock=lambda:time.perf_counter())
     session_epoch = None
@@ -375,7 +399,9 @@ def create_app(demo: Demo) -> FastAPI:
                 'runtime': isinstance(demo, RuntimeDemo), 'live_model':getattr(demo,'live_name',None),
                 'stale_frame_s':demo.cfg.get('runtime',{}).get('stale_frame_s',.25),
                 'provenance':getattr(demo,'provenance',{}),
+                'detector':getattr(getattr(demo,'pipeline',None),'detector_selection',{}),
                 'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
+                'product_scope':product_scope(demo.cfg, getattr(getattr(demo,'pipeline',None),'detector',None)),
                 'hazard_policy':demo.cfg.get('hazard_policy',{}),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 

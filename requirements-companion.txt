@@ -1,0 +1,3 @@
+# Add to requirements-runtime.txt. Tested Python 3.12 on Windows.
+cryptography==50.0.2
+qrcode[pil]==8.2 # local relay setup QR; no network service

@@ -132,7 +132,7 @@ def test_hand_equally_close_to_two_mouths_is_still_ambiguous():
     assert resolve_hands({1: a, 2: b}, {1: (200, 150, 470, 480), 2: (330, 150, 600, 480)}) == {1, 2}
 
 
-def test_hand_at_mouth_requests_caution_for_correct_person_without_object_mask():
+def test_hand_at_mouth_without_localized_object_does_not_warn_either_person():
     class Det:
         ok = True
         def detect(self, rgb):
@@ -161,7 +161,7 @@ def test_hand_at_mouth_requests_caution_for_correct_person_without_object_mask()
             for p in out['persons']:
                 levels.setdefault(p['person_id'], []).append(p['level'])
         assert len(levels) == 2                                 # two stable people
-        assert any(1 in lv for lv in levels.values())           # hand crop is suspicion, not localized contact
+        assert all(set(lv)=={0} for lv in levels.values())      # hand geometry alone is not object evidence
         assert all(2 not in lv for lv in levels.values())
     finally:
         pipe.close()
