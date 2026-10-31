@@ -1,8 +1,8 @@
 """Live demo on one webcam. Video is NEVER written to disk; only an event CSV
 (and, if asked, a per-frame feature CSV of numbers, used for B1 / tuning).
 
-    python scripts/run_webcam.py --ckpt outputs/runs/efficientnet_b0_group/best.pt
-    python scripts/run_webcam.py --no-classifier                     # Module B only
+    python scripts/run_webcam.py                                    # MobileNetV3-Large (default)
+    python scripts/run_webcam.py --no-classifier                    # Module B only
     python scripts/run_webcam.py --log-features --condition cam80cm_yaw30   # B1 recording session
 
 Keys: q = quit, space = pause.
@@ -18,7 +18,7 @@ import pandas as pd
 
 from childsafe.alerts.event_log import EventLogger
 from childsafe.alerts.processor import LEVEL_NAMES, Components
-from childsafe.config import FULL_DATASET_CHECKPOINT, load_config
+from childsafe.config import MOBILENET_CHECKPOINT, load_config
 from childsafe.pipeline import FramePipeline
 from childsafe.runtime.source import VideoSource
 from childsafe.runtime import configure_runtime
@@ -59,8 +59,8 @@ def draw(frame, lm, out, fps):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt", default=str(FULL_DATASET_CHECKPOINT),
-                    help="local checkpoint; defaults to the imported full-data Kaggle model")
+    ap.add_argument("--ckpt", default=str(MOBILENET_CHECKPOINT),
+                    help="local checkpoint; defaults to MobileNetV3-Large (group split, 10 classes)")
     ap.add_argument("--no-classifier", action="store_true")
     ap.add_argument("--accurate", action="store_true",
                     help="GPU: use the larger yolo11m-seg detector (best for far objects; ~130-180 ms per frame)")
@@ -83,7 +83,7 @@ def main():
     rc = cfg["runtime"]
     ckpt = None if args.no_classifier else args.ckpt
     if ckpt is not None and not Path(ckpt).is_file():
-        raise SystemExit("checkpoint not found; extract full_dataset_results.zip into outputs/full_dataset_results or pass --ckpt <best.pt>")
+        raise SystemExit(f"checkpoint not found: {ckpt}; pass --ckpt <best.pt>")
     pipe = FramePipeline(cfg, ckpt, Components.from_off(args.off))
     source_value = os.environ.get(args.source_env) if args.source_env else (
         args.camera if args.camera is not None else rc['camera_index'])

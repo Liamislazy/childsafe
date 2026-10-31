@@ -28,10 +28,24 @@ Nút **Tải ảnh kiểm tra** chỉ tải một PNG nguyên khung khi người
 Không kèm overlay/nhãn dự đoán, không tự ghi ảnh hay upload. Người dùng tự review và gán nhãn nếu
 dùng ảnh để chuẩn bị dữ liệu; chỉ thu người lớn đồng ý tham gia hoặc đạo cụ theo quy trình thử.
 
-Launcher chọn checkpoint local đầu tiên tồn tại. Checkout này có robust + other,
-không có checkpoint full-data được launcher ưu tiên. `/api/info` cho biết model
+Launcher chọn checkpoint local đầu tiên tồn tại. Mặc định là MobileNetV3-Large
+(10 lớp ChildSUn, chia theo nhóm, không có lớp "other"); robust + other chỉ còn là
+dự phòng khi thiếu checkpoint MobileNet. `/api/info` cho biết model
 thực tế, hash config/classifier/detector và phạm vi kết quả. Model cần đặt local;
 không tự tải khi thiếu. Kết quả NORMAL khi thiếu quan sát có màu xám, không phải safe.
+Khi chưa có nguy cơ và ảnh không cho thấy rõ miệng (`image_observation=unobservable`),
+thẻ người hiện thanh xám **KHÔNG KẾT LUẬN · camera không nhìn rõ** thay cho NORMAL.
+Nhãn YOLO `pen` là lớp `toothbrush` của COCO được đổi tên (COCO không có lớp bút); đây
+không phải detector bút và nĩa hay vật mảnh khác cũng có thể hiện nhãn này.
+Dao hoặc kéo mà YOLO gắn với bàn tay một người (độ tin cậy ≥ 0,6; trong 0,6 s gần nhất có
+ít nhất hai khung và ít nhất một nửa số khung thấy dao/kéo, kéo dài ≥ 0,2 s) được báo
+**NGUY CƠ CAO** ở bất kỳ vị trí nào, không cần gần miệng (`rules.held_sharp_*`); phát hiện
+yếu hơn chỉ báo cần chú ý. YOLO hay nhầm dao với kéo nên lý do ghi "knife or scissors".
+Khi tay nắm cán dao, MediaPipe thường không thấy bàn tay (0/113 khung trong một lần thử
+webcam); lúc đó dao/kéo nằm ít nhất một nửa trong khung của đúng một người không có tay
+quan sát được cũng được tính là đang cầm. Vì vậy dao trên bàn nằm trong khung người, khi
+không thấy tay, cũng có thể bị báo. Dao/kéo nằm ngoài khung người không kích hoạt quy tắc
+này. Ngưỡng chưa hiệu chỉnh.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/stop_web_demo.ps1

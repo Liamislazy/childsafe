@@ -12,14 +12,16 @@ from pathlib import Path
 
 import uvicorn
 
-from childsafe.config import ROOT, FULL_DATASET_CHECKPOINT, load_config
+from childsafe.config import ROOT, FULL_DATASET_CHECKPOINT, MOBILENET_CHECKPOINT, load_config
 from childsafe.web.app import RuntimeDemo, create_app
 from childsafe.runtime import configure_runtime
 
 RUNS = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs"
-# The FIRST existing checkpoint drives live alerts, so models with an "other" class come first:
-# ChildSUn-only models call most pens/phones knife or socket (docs/results_openimages.md).
-DEFAULT = {"full dataset (Kaggle)": FULL_DATASET_CHECKPOINT,
+# The FIRST existing checkpoint drives live alerts. MobileNetV3-Large is the chosen live model; it has no
+# "other" class, so unfamiliar objects (pens, phones) are forced into a ChildSUn class more often than with
+# the "other" models below (docs/results_openimages.md). Those stay as fallbacks.
+DEFAULT = {"MobileNetV3-Large": MOBILENET_CHECKPOINT,
+           "full dataset (Kaggle)": FULL_DATASET_CHECKPOINT,
            "robust + other (Open Images)": ROOT / "outputs" / "with_other" / "runs" / "efficientnet_b0_group_robust" / "best.pt",
            "standard": RUNS / "efficientnet_b0_group" / "best.pt",
            "robust (A5)": RUNS / "efficientnet_b0_group_robust" / "best.pt"}
@@ -40,7 +42,7 @@ def main():
     args = ap.parse_args()
     models = dict(m.split("=", 1) for m in args.model) if args.model else {k: str(v) for k, v in DEFAULT.items() if v.exists()}
     if not models:
-        raise SystemExit("No local checkpoint found. Extract full_dataset_results.zip into outputs/full_dataset_results or pass --model name=path/to/best.pt")
+        raise SystemExit(f"No local checkpoint found. Expected {MOBILENET_CHECKPOINT} or pass --model name=path/to/best.pt")
     for name, p in models.items():
         if not Path(p).exists():
             raise SystemExit(f"checkpoint for '{name}' not found: {p}")

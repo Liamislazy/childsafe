@@ -12,7 +12,7 @@ from childsafe.alerts.processor import AlertProcessor
 from childsafe.vision.detection import SegmentationDetector
 from childsafe.vision.tracking import PersonTracker, associate_object, iou, resolve_hands
 from childsafe.vision.elevated import ElevatedQuality, object_proximity
-from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object
+from childsafe.vision.objects import MaskEvidence, assign_objects, same_object as _same_object, sharp_without_hand
 from childsafe.vision.people import detect_person
 from childsafe.runtime.contracts import PersonState
 
@@ -334,6 +334,15 @@ class FramePipeline:
                                    self.cfg.get('quality',{}).get('max_hand_object_ratio',1.5))
         assigned=assignments.owned
         ambiguous.update(assignments.ambiguous)
+        # No hand found (a fist hides it): a confident knife/scissors mostly inside one person's box
+        # is still that person's held object, for classification and the held-sharp rule.
+        rules = self.cfg.get('rules', {})
+        claimed = {id(d) for objs in assigned.values() for d in objs}
+        for pid, objs in sharp_without_hand([d for d in scene.objects if id(d) not in claimed], active,
+                                            scene.people, set(rules.get('held_sharp_labels', [])),
+                                            rules.get('held_sharp_min_conf', .6)).items():
+            if pid not in ambiguous:
+                assigned[pid].extend(objs)
         outputs, rows = [], []
         active_ids = {p.person_id for p in active}
         for track in active:
@@ -341,7 +350,7 @@ class FramePipeline:
             lm = scene.people.get(pid)
             f = state['geometry'](lm) if lm is not None else dict(t=t, face_ok=0, hand_ok=0)
             f.update(schema_version=2, person_id=pid, session_id=self.session_id,
-                     history_reset=track.history_reset,
+                     history_reset=track.history_reset, person_reset=track.history_reset,
                      source_ok=source_ok, frame_valid=valid, received_t=received_t if received_t is not None else t,
                      frame_age_s=frame_age_s, detector_ok=self.detector.ok,
                      classifier_ok=self.classifier is not None and not state['classifier_error'],
@@ -365,6 +374,16 @@ class FramePipeline:
             if state['error']:
                 f['quality_reasons'].append('landmark model unavailable')
             objects = assigned[pid]
+            # Knife/scissors linked to this person's hand (rules.held_sharp_*): the processor raises
+            # DANGER for a confident one wherever the hand is. Ambiguous ownership never counts.
+            rules = self.cfg.get('rules', {})
+            sharp = max((d for d in objects if d.label in rules.get('held_sharp_labels', [])),
+                        key=lambda d: d.confidence, default=None)
+            if sharp is None or pid in ambiguous:
+                f.update(held_sharp_label='', held_sharp_conf=math.nan, held_sharp_confident=False)
+            else:
+                f.update(held_sharp_label=sharp.label, held_sharp_conf=sharp.confidence,
+                         held_sharp_confident=sharp.confidence >= rules.get('held_sharp_min_conf', .6))
             obj, proximity = None, None
             if objects:
                 # Select by visible mask proximity, so a long object's tip is not missed.
@@ -374,9 +393,9 @@ class FramePipeline:
                              item[0]['candidate_object_d_relative']
                              if math.isfinite(item[0]['candidate_object_d_relative']) else math.inf)
                 if state['object_box'] is not None and not _same_object(state['object_box'], state.get('object_label'), obj):
-                    state['processor'].reset()
+                    state['processor'].reset(keep_held_sharp=True)
                     self._clear_classification(state)
-                    f['history_reset'] = True
+                    f['history_reset'] = f['object_switched'] = True
                     state['mask_evidence'].reset()
                 state['object_box'], state['object_label'] = obj.box, obj.label
                 last = state.get('classified')

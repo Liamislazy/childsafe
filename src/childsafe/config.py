@@ -13,6 +13,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG = ROOT / "configs" / "default.yaml"
 FULL_DATASET_CHECKPOINT = ROOT / "outputs" / "full_dataset_results" / "efficientnet_b0_robust_letterbox" / "best.pt"
+# Live default classifier: MobileNetV3-Large, 10 ChildSUn classes, canonical group split (no "other" class).
+MOBILENET_CHECKPOINT = ROOT / "outputs" / "kaggle_v3" / "childsafe" / "outputs" / "runs" / "mobilenetv3_large_100_group" / "best.pt"
 
 
 def _merge(base: dict, over: dict) -> dict:

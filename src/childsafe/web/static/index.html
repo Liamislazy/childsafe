@@ -284,7 +284,6 @@ function beep(level) {
   gain.gain.value = .08; oscillator.connect(gain); gain.connect(audioContext.destination);
   oscillator.start(); oscillator.stop(audioContext.currentTime+.18); lastBeep = performance.now();
 }
-
 async function downloadSnapshot() {
   const v=$('video'),generation=runToken;
   if (!running || !v.videoWidth || !v.videoHeight) return;
@@ -301,6 +300,40 @@ async function downloadSnapshot() {
   setTimeout(()=>URL.revokeObjectURL(url),3000);
   $('snapshotStatus').textContent='Đã tải ảnh camera nguyên khung; bạn tự kiểm tra và gán nhãn.';
 }
+// ---------- stable labels (display only) ----------
+// YOLO and the classifier re-guess every frame, so one object's name used to flip constantly. A shown
+// label only changes when another label holds a clear majority (>= LABEL_SWITCH_SHARE of the votes,
+// and more than the current one) over the last LABEL_WINDOW_MS. Alerts, the CSV and the session
+// export still use the per-frame values.
+const LABEL_WINDOW_MS = 1500, LABEL_SWITCH_SHARE = .6;
+let labelTracks = [];
+const boxIou = (p, q) => { const w = Math.min(p[2],q[2])-Math.max(p[0],q[0]), h = Math.min(p[3],q[3])-Math.max(p[1],q[1]);
+  if (w <= 0 || h <= 0) return 0; const area = r => (r[2]-r[0])*(r[3]-r[1]); return w*h/(area(p)+area(q)-w*h); };
+function stableLabel(key, label, now, used, box = null) {
+  // Card lines use a per-person key; boxes have no stable id and are matched by overlap instead.
+  let track = labelTracks.find(tr => tr.key === key && !used.has(tr) && (!box || (tr.box && boxIou(tr.box, box) > .3)));
+  if (!track) { track = {key, box, items: []}; labelTracks.push(track); }
+  used.add(track); track.box = box; track.last = now;
+  track.items = [...track.items.filter(it => now - it.now <= LABEL_WINDOW_MS), {now, label}];
+  const counts = new Map();
+  for (const it of track.items) counts.set(it.label, (counts.get(it.label) || 0) + 1);
+  let best = label, bestN = 0;
+  for (const [name, n] of counts) if (n > bestN) { best = name; bestN = n; }
+  if (track.shown === undefined || (best !== track.shown && bestN > (counts.get(track.shown) || 0)
+                                    && bestN >= LABEL_SWITCH_SHARE * track.items.length)) track.shown = best;
+  return track.shown;
+}
+const pruneLabels = now => { labelTracks = labelTracks.filter(tr => now - tr.last <= LABEL_WINDOW_MS); };
+
+// COCO labels for kinds of object the 10-class ChildSUn classifier was trained on. For any other YOLO
+// label (pen, phone, cup...) the classifier can only force one of its 10 classes (a pen came out as
+// "ball"), so the held object is named with YOLO's label instead. No YOLO label (hand-crop
+// evidence) keeps the classifier's name.
+const CLASSIFIER_KINDS = new Set(['knife', 'fork', 'spoon', 'scissors', 'sports ball', 'teddy bear',
+                                  'apple', 'banana', 'orange']);
+const heldName = (classifierName, yoloLabel) =>
+  !yoloLabel || CLASSIFIER_KINDS.has(yoloLabel) ? classifierName : yoloLabel;
+
 function renderRuntime(res) {
   const names = ['CHƯA GHI NHẬN NGUY CƠ', 'CẦN CHÚ Ý', 'NGUY CƠ CAO'];
   const colors = ['#34c374', '#f0a92b', '#ef5b4c'];
@@ -308,7 +341,11 @@ function renderRuntime(res) {
   status.replaceChildren();
   // Always show the danger level; observation quality is a separate note (it is never "complete"
   // while the camera is uncalibrated, which used to hide NORMAL behind a grey badge).
-  const heading = document.createElement('h3'); heading.textContent = `Mức: ${names[res.level]}`;
+  // Exception: with no risk found and the mouth/image unobservable, say "inconclusive" instead.
+  const inconclusive = p => p.level === 0 && p.image_observation === 'unobservable';
+  const allInconclusive = res.level === 0 && res.people.length > 0 && res.people.every(inconclusive);
+  const heading = document.createElement('h3');
+  heading.textContent = allInconclusive ? 'Mức: KHÔNG KẾT LUẬN' : `Mức: ${names[res.level]}`;
   heading.style.color = res.level === 0 && !res.green ? '#64748b' : colors[res.level]; status.append(heading);
   if (res.caregiver_action) { const action=document.createElement('p'); action.textContent=res.caregiver_action; status.append(action); }
   if (!res.green) { const q = document.createElement('p'); q.className = 'note'; q.textContent = 'Quan sát hạn chế: kết quả có thể bỏ sót (xem lý do bên dưới).'; status.append(q); }
@@ -316,18 +353,27 @@ function renderRuntime(res) {
   summary.textContent = `Người: ${res.people.length} · Vật: ${res.objects.length} · Detector: ${res.detector_ok ? 'sẵn sàng' : 'lỗi'} · Classifier: ${res.classifier_ok ? 'sẵn sàng' : 'lỗi'}`; status.append(summary);
   for (const message of [...res.limitations, res.reason].filter(Boolean)) { const p=document.createElement('p'); p.className='note'; p.textContent=message; status.append(p); }
   $('liveModels').replaceChildren();
+  const now = performance.now(), used = new Set();
   for (const person of res.people) {
+    // Missing values vote too, so a single missed frame does not blank the line.
+    const objectName = stableLabel('object'+person.track_id,
+      person.object_localized ? heldName(person.class || person.object || 'chưa rõ loại', person.yolo_label) : 'chưa có', now, used);
+    const yoloGuess = stableLabel('yolo'+person.track_id, person.object_localized ? person.yolo_label : '', now, used);
+    const [className, classStatus] = stableLabel('class'+person.track_id,
+      (person.class || 'chưa có')+'|'+person.status, now, used).split('|');
     const card=document.createElement('div'); card.className='card model';
     const title=document.createElement('h3'); title.textContent=`Người #${person.id}`; card.append(title);
-    const level=document.createElement('div'); level.className='level '+person.level_name;
-    level.textContent=names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
+    const unseen = inconclusive(person);
+    const level=document.createElement('div'); level.className='level '+(unseen ? 'limited' : person.level_name);
+    level.textContent=unseen ? 'KHÔNG KẾT LUẬN · camera không nhìn rõ'
+                             : names[person.level] + (person.green ? '' : ' · quan sát hạn chế');
     if (person.level===0 && !person.green) { level.style.color='#cbd5e1'; level.style.background='#334155'; }
     card.append(level);
     const messages = [person.caregiver_action, `Miệng: ${person.mouth_visible ? 'thấy rõ' : 'chưa thấy rõ'} · Tay: ${person.hands.length}`,
       `Chất lượng ảnh: ${{observable:'đủ rõ theo ngưỡng hiện tại',degraded:'hạn chế',unobservable:'không quan sát được'}[person.image_observation] || 'chưa rõ'} · Hiệu chuẩn: ${person.validation_status === 'validated' ? 'đã khai báo' : 'chưa kiểm chứng'} · Phạm vi vật: ${person.object_scope === 'complete' ? 'theo cấu hình' : 'hạn chế'}`,
-      `Vật định vị: ${person.object_localized ? (person.object || 'chưa rõ loại') : 'chưa có'}${person.yolo_label && person.yolo_label !== person.object ? ` (YOLO đoán: ${person.yolo_label})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
+      `Vật định vị: ${objectName}${yoloGuess && yoloGuess !== objectName ? ` (YOLO đoán: ${yoloGuess})` : ''} · Mask: ${person.mask_reliable ? (person.mask_temporally_stable ? 'ổn định theo gate hiện tại' : 'đang chờ ổn định') : 'chưa đủ'}`,
       `Vị trí nghi ngờ lấy từ: ${{mask:'vùng mask',box:'hộp vật — chỉ cảnh giác'}[person.candidate_localization] || 'chưa đo được'}${person.hand_roi_attempted ? ' · Tìm tay vùng nhỏ: '+(person.hand_roi_error ? 'gặp lỗi' : person.hand_roi_found+' tay') : ''}`,
-      `Phân loại: ${person.class || 'chưa có'} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[person.status] || person.status})`,
+      `Phân loại: ${className} (${{safe:'thuộc nhóm safe của dữ liệu, không xác nhận an toàn',unsafe:'thuộc nhóm nguy hiểm',uncertain:'chưa chắc chắn',none:'chưa có'}[classStatus] || classStatus})`,
       `Nguồn đánh giá loại nguy cơ: ${{detector:'detector độc lập với classifier',classifier:'classifier',conflict:'hai model khác nhau — chỉ cảnh giác',none:'chưa đủ'}[person.hazard_source] || 'chưa đủ'} · Điểm detector: ${person.object_confidence == null ? '—' : person.object_confidence.toFixed(2)} (không phải xác suất nguy hiểm)`,
       `Nguy cơ theo tình huống: ${{known_hazard:'vật thuộc phạm vi cảnh báo đã định nghĩa',context_unknown:'chưa xác định nguy cơ từ loại vật này',unclassified:'chưa đủ thông tin phân loại'}[person.hazard_status] || 'chưa xác định'}`,
       `Tay→miệng: ${person.d_hand == null ? '—' : person.d_hand.toFixed(2)} · Vật→miệng: ${person.d_object == null ? (person.object ? '—' : 'chưa thấy vật') : person.d_object.toFixed(2)} (gần khi < ${(info?.thresholds?.d_enter ?? .35)})`,
@@ -366,11 +412,28 @@ function draw(res) {
   if (person.mouth) { const [x, y] = P(person.mouth); ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, 6, 0, 7); ctx.fill(); }
   if (person.box) { const [x,y]=P(person.box); ctx.fillStyle='#ffffff'; ctx.fillText('ID '+person.id,x,y+15); }
   }
+  // The object held by a person is labelled with our classifier's name when YOLO sees a kind of
+  // object the classifier knows (heldName), else with YOLO's label; other boxes keep YOLO's COCO
+  // guess. All are smoothed by stableLabel.
+  const iou = boxIou, now = performance.now(), used = new Set();
+  const held = res.people.filter(p => p.object_box && p.class);
+  const named = (p, yoloLabel) => heldName(p.class + (p.status === 'uncertain' ? ' (chưa chắc)' : ''), yoloLabel);
+  const box = (b, text, color) => {
+    const [a, c] = [P(b), P([b[2], b[3]])];
+    ctx.strokeStyle='#f0a92b'; ctx.lineWidth=2; ctx.strokeRect(a[0],a[1],c[0]-a[0],c[1]-a[1]);
+    ctx.fillStyle=color; ctx.fillText(text,a[0],a[1]-5);
+  };
   for (const object of res.objects) {
-    ctx.strokeStyle='#f0a92b'; ctx.fillStyle='#f0a92b'; ctx.lineWidth=2;
-    const [a,b]=[P(object.box),P([object.box[2],object.box[3]])]; ctx.strokeRect(a[0],a[1],b[0]-a[0],b[1]-a[1]); ctx.fillText('YOLO: '+object.label,a[0],a[1]-5);
+    const owner = held.find(p => iou(p.object_box, object.box) > .8);
+    box(object.box, owner ? stableLabel('held', named(owner, object.label), now, used, object.box)
+                          : 'YOLO: '+stableLabel('yolo', object.label, now, used, object.box),
+        owner ? '#ffffff' : '#f0a92b');
     if (object.mask.length) { ctx.beginPath(); object.mask.forEach((point,i)=>{ const [x,y]=P(point); i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); }); ctx.closePath(); ctx.stroke(); }
   }
+  // Held objects found only by the zoomed hand/mouth pass are not in res.objects.
+  for (const p of held) if (!res.objects.some(o => iou(p.object_box, o.box) > .8))
+    box(p.object_box, stableLabel('held', named(p, p.yolo_label), now, used, p.object_box), '#ffffff');
+  pruneLabels(now);
 }
 
 

@@ -8,6 +8,7 @@ recorded feature logs without touching video again.
 from __future__ import annotations
 
 import math
+from collections import deque
 from dataclasses import dataclass, fields
 
 from childsafe.alerts.temporal import Hysteresis, TimeWindow
@@ -63,7 +64,10 @@ class AlertProcessor:
                                          caution_s,tc.get('max_gap_s',.25))
         self.reset()
 
-    def reset(self):
+    def reset(self, keep_held_sharp=False):
+        """keep_held_sharp: same person, the hand switched objects but still holds a knife/scissors.
+        The knife vote survives (the held object flickered between the knife and another box in a
+        webcam test)."""
         self.filter.reset(); self.speed_filter.reset(); self.hyst.reset(); self.vote.reset()
         self.candidate_vote.reset()
         self.frame = 0
@@ -84,6 +88,8 @@ class AlertProcessor:
         self.last_confirmed_t = None
         self.paused_dwell = 0.
         self.last_classify_t = None
+        if not keep_held_sharp or not hasattr(self, 'sharp_frames'):
+            self.sharp_frames = deque()   # (t, confident knife/scissors label or '') over rules.held_sharp_window_s
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -103,7 +109,10 @@ class AlertProcessor:
     def step(self, f: dict, obj: dict | None = None) -> dict:
         """f: feature dict from GeometryExtractor; obj: ObjectClassifier output for this frame, if run."""
         if f.get('history_reset', False):
-            self.reset()
+            # Keep the knife vote only when the hand merely switched objects and still holds a knife
+            # or scissors; a knife replaced by a spoon (or a new person) starts from nothing.
+            self.reset(keep_held_sharp=f.get('object_switched', False) and not f.get('person_reset', False)
+                       and not f.get('association_ambiguous', False) and bool(f.get('held_sharp_label')))
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
@@ -294,14 +303,37 @@ class AlertProcessor:
                 and 0 <= t - self.last_evidence_t <= sc['lost_hold_s'])
         if held and self.last_level > level:
             level, reason = self.last_level, 'recent evidence held; mouth/object not observable'
+        # Held sharp object (rules.held_sharp_*): a knife or scissors YOLO links to this person's hand
+        # is DANGER wherever the hand is, no mouth proximity needed. YOLO's label for one object
+        # flickers between frames (knife/fork/spoon), so DANGER is a vote over held_sharp_window_s:
+        # at least two confident knife/scissors frames, at least half of the frames, spanning
+        # held_sharp_danger_s. A weaker detection raises CAUTION.
+        sharp_label = (f.get('held_sharp_label', '') if modern and valid
+                       and not f.get('association_ambiguous', False) else '')
+        # Its own frame-gap limit: this is not a dwell at the mouth, and with YOLO11m frames arrive
+        # about 0.3 s apart (more than temporal.max_gap_s), which used to clear the vote every frame.
+        if self.sharp_frames and not 0 < t - self.sharp_frames[-1][0] <= rc.get('held_sharp_max_gap_s', .5):
+            self.sharp_frames.clear()
+        self.sharp_frames.append((t, sharp_label if f.get('held_sharp_confident', False) else ''))
+        while t - self.sharp_frames[0][0] > rc.get('held_sharp_window_s', .6):
+            self.sharp_frames.popleft()
+        hits = [(ts, label) for ts, label in self.sharp_frames if label]
+        sharp_in_hand = (len(hits) >= 2 and 2 * len(hits) >= len(self.sharp_frames)
+                         and hits[-1][0] - hits[0][0] >= rc.get('held_sharp_danger_s', .2) - 1e-9)
+        # YOLO confuses the two (a held knife came back as 'scissors'), so the reason names both.
+        if sharp_in_hand:
+            level, reason = DANGER, 'knife or scissors held in hand'
+        elif sharp_label and level < CAUTION:
+            level, reason = CAUTION, 'possible knife or scissors in hand'
         end_reason = ''
         if self.event_active and not (held or caution_held):
             if not f.get('source_ok', True):
                 end_reason = 'source_disconnected'
             elif f.get('person_left', False):
                 end_reason = 'person_left_frame'
-            elif (not visible or f.get('association_ambiguous', False) or (modern and not object_present)
-                  or (self.event_reliable and missing_evidence)):
+            elif not sharp_in_hand and (not visible or f.get('association_ambiguous', False)
+                                        or (modern and not object_present)
+                                        or (self.event_reliable and missing_evidence)):
                 end_reason = 'observation_lost'
             elif level == NORMAL:
                 end_reason = 'observed_departure' if not _isnan(d_raw) and d_raw > tc['d_exit'] else 'risk_changed'

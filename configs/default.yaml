@@ -128,7 +128,8 @@ cascade:                    # D2
   crop_scale: 2.2           # hand crop = hand bbox * scale
 
 hazard_policy:
-  # Explicit scope for high alerts: visible held sharp objects near the mouth in 2D.
+  # Explicit scope for high alerts: visible held sharp objects near the mouth in 2D, plus a knife or
+  # scissors held in a hand anywhere (rules.held_sharp_*).
   # Toy/fruit/spoon labels do not establish suitability, size or absence of fragments.
   # Socket/heater categories require different contextual detectors, not mouth rules.
   mouth_hazards: {knife: sharp_object, fork: pointed_object, scissors: sharp_object}
@@ -159,6 +160,18 @@ rules:                      # D3
   caution_evidence_s: 0.15  # sustained localized candidate; a bare hand never starts an alert. UNTUNED
   caution_hold_s: 1.5       # missing object/mouth is capped by smoothing.lost_hold_s; no hand-only renewal
   hand_crop_min_p_unsafe: 0.8
+  # A knife or scissors that YOLO links to a person's hand is DANGER wherever the hand is; no mouth
+  # proximity needed (product decision 2026-10-26). Uses YOLO's COCO label, not the classifier.
+  # Confident detections only (same 0.6 as quality.min_mask_conf). YOLO's label flickers, so DANGER
+  # is a vote over held_sharp_window_s: >= 2 confident frames, >= half the frames, spanning
+  # held_sharp_danger_s. A weaker detection raises CAUTION. UNTUNED.
+  held_sharp_labels: [knife, scissors]
+  held_sharp_min_conf: 0.6
+  held_sharp_danger_s: 0.2
+  held_sharp_window_s: 0.6
+  # Frames further apart than this clear the vote. Not temporal.max_gap_s (0.25): that bounds the
+  # dwell at the mouth, while YOLO11m (--accurate) runs at about 0.3 s per frame.
+  held_sharp_max_gap_s: 0.5
 
 runtime:
   cpu_threads: 0            # measured here: forcing 2 was slower; CLI can override per machine

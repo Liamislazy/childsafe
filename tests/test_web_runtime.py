@@ -41,6 +41,7 @@ def runtime(kind):
                     p_unknown_cal=.99 if kind=='other' else 0.,top3=[])
     obj = RuntimeDemo.__new__(RuntimeDemo)
     obj.cfg = load_config(); obj.cfg['quality']['min_sharpness'] = 0
+    obj.cfg['rules']['held_sharp_labels'] = []   # mouth path only; knife-in-hand DANGER: test_held_sharp.py
     obj.lock = threading.Lock(); obj.t0 = 0.
     obj.paths = {'full dataset':'unused/best.pt'}; obj.live_name = 'full dataset'
     obj.rows = []; obj.recording_full = False

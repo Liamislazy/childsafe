@@ -40,6 +40,13 @@ def _nan_to_none(x):
     return None if isinstance(x, float) and (math.isnan(x) or math.isinf(x)) else x
 
 
+def _held_box(pipeline, pid):
+    """Box of the object the pipeline associated with this person (the one the classifier named)."""
+    state = getattr(pipeline, 'states', {}).get(pid)
+    box = state.get('object_box') if state is not None else None
+    return [round(float(v), 1) for v in box] if box is not None else None
+
+
 def _thumb(rgb: np.ndarray, size: int = 160) -> str:
     im = Image.fromarray(rgb)
     im.thumbnail((size, size))
@@ -267,6 +274,7 @@ class RuntimeDemo(Demo):
                 'yolo_label': features.get('object_label', ''),
                 'mask_reliable': bool(features.get('mask_reliable')),
                 'object_localized':bool(features.get('object_present')),
+                'object_box':_held_box(self.pipeline,pid) if features.get('object_present') else None,
                 'mask_temporally_stable':bool(features.get('mask_temporally_stable')),
                 'candidate_localization':features.get('candidate_localization',''),
                 'object_mask_pixels':features.get('object_mask_pixels',0),
