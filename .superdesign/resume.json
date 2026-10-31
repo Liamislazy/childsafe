@@ -23,6 +23,31 @@
         }
       },
       "updatedAt": "2026-10-27T07:28:20.454756+00:00"
+    },
+    "play-area": {
+      "targetKind": "new-ui",
+      "projectId": "8193203f-ac04-416d-903d-a48098076e82",
+      "activeDraftId": "7f4edc06-0657-4bf1-ab0f-5f7461e810d4",
+      "designSystemPath": ".superdesign/design-system.md",
+      "contextFiles": [
+        ".superdesign/design-system.md",
+        ".superdesign/init/theme.md"
+      ],
+      "fingerprints": {
+        ".superdesign/design-system.md": "b5d3c4cc07715290bae9164835287467541ebe5325a3e041cefef0260b726deb",
+        ".superdesign/init/theme.md": "5d4586ea0361aa977a402751584f5ad73f28689043dc7bf6e068fe6930472786"
+      },
+      "components": [],
+      "drafts": {
+        "7f4edc06-0657-4bf1-ab0f-5f7461e810d4": {
+          "title": "ChildSafe Play Prep Dashboard",
+          "visualDirection": "desktop web, fixed table with checklist, source light/dark theme",
+          "currentVersion": 1
+        }
+      },
+      "canvasCorrectionPendingApproval": true,
+      "localImplementation": "src/childsafe/web/static/play_area.html",
+      "note": "Canvas v1 is layout illustration and has unsupported sample metrics/safety wording. Corrected local HTML and functional local UI remove these. Upload of corrected derived HTML was denied; do not retry without human approval."
     }
   }
 }

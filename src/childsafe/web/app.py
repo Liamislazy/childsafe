@@ -327,6 +327,8 @@ class RuntimeDemo(Demo):
 
 def create_app(demo: Demo) -> FastAPI:
     app = FastAPI(title="childsafe demo")
+    from childsafe.web.play_area import PlayAreaScanner, play_area_router
+    app.include_router(play_area_router(PlayAreaScanner(demo.cfg)))
     processing = asyncio.Lock()
     lease = BrowserLease(demo.cfg.get('runtime',{}).get('stale_frame_s',.25), clock=lambda:time.perf_counter())
     session_epoch = None

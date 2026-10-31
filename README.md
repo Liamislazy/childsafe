@@ -12,6 +12,10 @@ Background, scope and the literature notes are in [docs/handoff.md](docs/handoff
 For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Pen/coin detector training remains pending.
 
 For PIISE preparation, use the [scope, demonstration and evidence pack](docs/piise/README.md).
+For the fixed-table prevention trial, use [Một phút chuẩn bị góc chơi](docs/play_area_demo.md):
+`python scripts/play_area_demo.py` then open http://127.0.0.1:8002/play-area.
+This separate prototype checks visible knife/scissors/fork candidates without needing a face or hand;
+user checkmarks are self-reports, not a safety certificate. Real-table accuracy remains unmeasured.
 `scripts/check_demo_readiness.py` inventories the actual selected local weights without opening a camera.
 `scripts/prepare_fair_evidence.py` exports the strict session comparison, or explicitly reports missing data.
 The finalized research report on Drive is separate and is not rewritten by these tools.
