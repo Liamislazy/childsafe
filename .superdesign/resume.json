@@ -42,12 +42,12 @@
         "7f4edc06-0657-4bf1-ab0f-5f7461e810d4": {
           "title": "ChildSafe Play Prep Dashboard",
           "visualDirection": "desktop web, fixed table with checklist, source light/dark theme",
-          "currentVersion": 1
+          "currentVersion": 2
         }
       },
-      "canvasCorrectionPendingApproval": true,
+      "canvasCorrectionPendingApproval": false,
       "localImplementation": "src/childsafe/web/static/play_area.html",
-      "note": "Canvas v1 is layout illustration and has unsupported sample metrics/safety wording. Corrected local HTML and functional local UI remove these. Upload of corrected derived HTML was denied; do not retry without human approval."
+      "note": "Canvas v2 synced with explicit user authorization; sample safety certification and fabricated camera timing removed. Functional local UI tested separately; real-table camera evaluation remains pending."
     }
   }
 }
