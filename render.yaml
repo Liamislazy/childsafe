@@ -1,0 +1,23 @@
+# Render Blueprint: the phone-alert relay only (services/notify). Camera frames and the AI never
+# run here; the laptop sends alert text (level, reason, time). See docs/phone_alerts.md.
+services:
+  - type: web
+    name: childsafe-alerts
+    runtime: python
+    plan: free
+    rootDir: services/notify
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.10
+      # Secrets: generate with scripts/make_vapid_keys.py and paste in the Render dashboard.
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: ALERT_TOKEN
+        sync: false
+      - key: MONITOR_CODE
+        sync: false

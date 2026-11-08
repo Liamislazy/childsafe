@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#3b6fd8">
+<title>ChildSafe — Cảnh báo trên điện thoại</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--text:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#3b6fd8;--danger:#c93535;--ok:#2e7d4f}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--panel:#1b2029;--text:#e7eaf0;--muted:#98a2b3;--line:#2b3240;--accent:#6d97f0;--danger:#ef6b5a;--ok:#5cc08a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:17px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:auto;padding:18px}h1{font-size:24px;margin:8px 0 4px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-top:14px}
+input,button{font:inherit;border-radius:10px;border:1px solid var(--line);padding:12px 14px;width:100%;margin-top:8px;background:var(--panel);color:var(--text)}
+button{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600;min-height:52px}button.secondary{background:transparent;color:var(--text)}
+.note{color:var(--muted);font-size:15px}.status{font-weight:600}.status.ok{color:var(--ok)}.status.bad{color:var(--danger)}
+ol{padding-left:20px}li{margin:8px 0}.event.danger{color:var(--danger);font-weight:600}
+</style>
+</head>
+<body>
+<main>
+<h1>ChildSafe</h1>
+<p class="note">Nhận cảnh báo NGUY HIỂM từ máy tính đang chạy camera. Chỉ nhận chữ (mức, lý do, giờ); không có hình ảnh.</p>
+<section class="card">
+ <label for="code">Mã ghép đôi (do người cài đặt cung cấp)</label>
+ <input id="code" autocomplete="off" inputmode="text">
+ <button id="enable">Bật thông báo trên điện thoại này</button>
+ <button id="test" class="secondary">Gửi thông báo thử</button>
+ <p id="status" class="status" role="status"></p>
+ <p class="note">Mở bằng Chrome trên Android và cho phép thông báo. Nếu điện thoại đang tiết kiệm pin, thông báo có thể đến chậm. Máy chủ miễn phí có thể mất khoảng một phút để “thức dậy” ở lần mở đầu tiên.</p>
+</section>
+<section class="card">
+ <strong>Cảnh báo gần đây</strong>
+ <ol id="events"><li class="note">Chưa có.</li></ol>
+</section>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const say=(text,ok)=>{const s=$('status');s.textContent=text;s.className='status '+(ok?'ok':'bad');};
+try{$('code').value=localStorage.getItem('childsafe-code')||'';}catch{}
+const b64=s=>{const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0));};
+async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const out=await r.json().catch(()=>({}));if(!r.ok)throw Error(out.detail||('Lỗi '+r.status));return out;}
+async function enable(silent){
+  const code=$('code').value.trim();if(!code){if(!silent)say('Nhập mã ghép đôi trước.');return;}
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){say('Trình duyệt này không hỗ trợ thông báo đẩy. Dùng Chrome trên Android.');return;}
+  try{
+    if(Notification.permission!=='granted'){if(silent)return;if(await Notification.requestPermission()!=='granted'){say('Chưa cho phép thông báo.');return;}}
+    const reg=await navigator.serviceWorker.register('/sw.js');await navigator.serviceWorker.ready;
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub){const {public_key}=await (await fetch('/api/vapid')).json();
+      sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64(public_key)});}
+    const out=await post('/api/subscribe',{code,subscription:sub.toJSON()});
+    try{localStorage.setItem('childsafe-code',code);}catch{}
+    say(`Đã bật. ${out.subscribers} điện thoại đang nhận cảnh báo.`,true);loadEvents();
+  }catch(e){say('Không bật được: '+e.message);}
+}
+async function loadEvents(){
+  const code=$('code').value.trim();if(!code)return;
+  try{const r=await fetch('/api/events?'+new URLSearchParams({code}));if(!r.ok)return;const {events}=await r.json();
+    const list=$('events');list.replaceChildren();
+    if(!events.length){const li=document.createElement('li');li.className='note';li.textContent='Chưa có.';list.append(li);}
+    for(const e of events){const li=document.createElement('li');li.className='event'+(e.level>=2?' danger':'');
+      li.textContent=`${new Date(e.t*1000).toLocaleTimeString('vi-VN')} · ${e.title} · ${e.body}`;list.append(li);}
+  }catch{}
+}
+$('enable').onclick=()=>enable(false);
+$('test').onclick=async()=>{try{const out=await post('/api/test',{code:$('code').value.trim()});say(`Đã gửi thử tới ${out.sent} điện thoại.`,true);}catch(e){say('Không gửi được: '+e.message);}};
+// Re-register on every visit: the free server forgets subscriptions when it sleeps.
+enable(true);setInterval(loadEvents,15000);
+</script>
+</body></html>

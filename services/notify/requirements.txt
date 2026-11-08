@@ -1,0 +1,4 @@
+# ChildSafe phone-alert service on Render (render.yaml). No models, no images.
+fastapi==0.142.2
+uvicorn==0.54.0
+pywebpush==2.5.0

@@ -1,0 +1,101 @@
+import json
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
+
+import pytest
+from browser_client import CameraClient as TestClient
+
+from childsafe.notify import PhoneNotifier
+from childsafe.web.app import create_app
+from test_web_runtime import image, runtime
+
+SUB = {'endpoint': 'https://push.example/abc', 'keys': {'p256dh': 'k', 'auth': 'a'}}
+
+
+class FakeService(BaseHTTPRequestHandler):
+    """Stands in for services/notify: in-memory subscriptions, records alerts."""
+    subs, alerts, auth = [], [], []
+
+    def _reply(self, payload):
+        body = json.dumps(payload).encode()
+        self.send_response(200); self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body))); self.end_headers(); self.wfile.write(body)
+
+    def do_GET(self):
+        FakeService.auth.append(self.headers.get('Authorization'))
+        self._reply({'subscriptions': FakeService.subs})
+
+    def do_POST(self):
+        FakeService.auth.append(self.headers.get('Authorization'))
+        body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+        if self.path == '/api/restore':
+            FakeService.subs[:] = body['subscriptions']
+            self._reply({'subscribers': len(FakeService.subs)})
+        else:
+            FakeService.alerts.append(body)
+            self._reply({'sent': len(FakeService.subs), 'subscribers': len(FakeService.subs)})
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture
+def service():
+    FakeService.subs, FakeService.alerts, FakeService.auth = [], [], []
+    server = ThreadingHTTPServer(('127.0.0.1', 0), FakeService)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f'http://127.0.0.1:{server.server_address[1]}'
+    server.shutdown()
+
+
+def wait(condition, timeout=5.):
+    end = time.time() + timeout
+    while time.time() < end and not condition():
+        time.sleep(.02)
+    return condition()
+
+
+def test_alert_is_sent_and_lost_subscriptions_are_restored(service, tmp_path):
+    store = tmp_path / 'subs.json'
+    store.write_text(json.dumps([SUB]))     # saved earlier; the service has restarted empty
+    notifier = PhoneNotifier(service, 'secret', store=store, keepalive_s=60)
+    try:
+        assert wait(lambda: FakeService.subs == [SUB])          # restored on start
+        notifier.send(2, 'ChildSafe: NGUY HIỂM', 'Đang cầm dao')
+        assert wait(lambda: FakeService.alerts and notifier.status['sent'] == 1)
+        assert FakeService.alerts[0] == {'level': 2, 'title': 'ChildSafe: NGUY HIỂM', 'body': 'Đang cầm dao'}
+        assert set(FakeService.auth) == {'Bearer secret'}
+    finally:
+        notifier.close()
+
+
+def test_unreachable_service_is_reported_not_raised(tmp_path):
+    notifier = PhoneNotifier('http://127.0.0.1:9', 'secret', store=tmp_path / 's.json', keepalive_s=60, timeout_s=1)
+    try:
+        notifier.send(2, 't', 'b')
+        assert wait(lambda: notifier.status['last_error'])
+    finally:
+        notifier.close()
+    with pytest.raises(ValueError):
+        PhoneNotifier('http://example.com', 'secret')
+
+
+def test_web_demo_sends_danger_once_without_images(monkeypatch):
+    now = [0.]
+    monkeypatch.setattr('childsafe.web.app.time', SimpleNamespace(perf_counter=lambda: now[0], strftime=time.strftime))
+    monkeypatch.setattr('childsafe.pipeline.time', SimpleNamespace(perf_counter=lambda: now[0]))
+    sent = []
+    demo = runtime('unsafe')
+    demo.notifier = SimpleNamespace(send=lambda *a: sent.append(a), status={'last_error': ''}, url='https://x', close=lambda: None)
+    client = TestClient(create_app(demo))
+    try:
+        for index in range(15):
+            now[0] = index * .1
+            client.post('/api/frame', content=image())
+    finally:
+        demo.close()
+    assert len(sent) == 1
+    level, title, body = sent[0]
+    assert level == 2 and 'NGUY HIỂM' in title and isinstance(body, str)

@@ -8,11 +8,13 @@ click "Start camera". Localhost only; frames are never saved. Numeric session
 features remain in memory until reset and can be downloaded explicitly.
 """
 import argparse
+import os
 from pathlib import Path
 
 import uvicorn
 
 from childsafe.config import ROOT, FULL_DATASET_CHECKPOINT, MOBILENET_CHECKPOINT, load_config
+from childsafe.notify import PhoneNotifier
 from childsafe.web.app import RuntimeDemo, create_app
 from childsafe.runtime import configure_runtime
 
@@ -39,6 +41,8 @@ def main():
                     help="GPU: use the larger yolo11m-seg detector (best for far objects; ~130-180 ms per frame)")
     ap.add_argument("--single-person", action="store_true",
                     help="follow only the largest person (ignore photos/screens/small faces in view)")
+    ap.add_argument("--notify-url", default=os.environ.get("CHILDSAFE_NOTIFY_URL", ""),
+                    help="phone-alert service URL (docs/phone_alerts.md); token from CHILDSAFE_NOTIFY_TOKEN")
     args = ap.parse_args()
     models = dict(m.split("=", 1) for m in args.model) if args.model else {k: str(v) for k, v in DEFAULT.items() if v.exists()}
     if not models:
@@ -59,6 +63,12 @@ def main():
     if args.accurate:
         cfg['detector']['weights_gpu'] = str(Path(cfg['detector']['weights']).with_name('yolo11m-seg.pt'))
     demo = RuntimeDemo(cfg, models)
+    if args.notify_url:
+        token = os.environ.get("CHILDSAFE_NOTIFY_TOKEN", "")
+        if not token:
+            raise SystemExit("Set CHILDSAFE_NOTIFY_TOKEN to the service's ALERT_TOKEN (docs/phone_alerts.md).")
+        demo.notifier = PhoneNotifier(args.notify_url, token)
+        print(f"phone alerts: {args.notify_url}")
     print(f"open http://127.0.0.1:{args.port}")
     try:
         uvicorn.run(create_app(demo), host="127.0.0.1", port=args.port, log_level="warning")

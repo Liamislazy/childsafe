@@ -173,6 +173,7 @@ class RuntimeDemo(Demo):
         self.annotations, self.open_annotation = [], None
         self.recording_full = False
         self.prev_frame_t = None
+        self.notifier = None    # childsafe.notify.PhoneNotifier when phone alerts are configured
 
     def reset(self):
         self.pipeline.reset()
@@ -203,6 +204,8 @@ class RuntimeDemo(Demo):
             return pd.DataFrame(self.rows).to_csv(index=False)
 
     def close(self):
+        if getattr(self, 'notifier', None) is not None:
+            self.notifier.close()
         self.pipeline.close()
 
     def frame(self, body, kind, severity, mode, *, deadline=None, frame_age_s=0.,
@@ -316,6 +319,15 @@ class RuntimeDemo(Demo):
             limitations.append('Chưa phát hiện người: đưa người và tay vào khung hình, tăng ánh sáng.')
         if any(row.get('roi_budget_skips',0) for row in out['feature_rows']):
             limitations.append('Thiếu thời gian để dò vật trong vùng nhỏ ở ảnh này; có thể bỏ sót vật ở xa.')
+        notifier = getattr(self, 'notifier', None)
+        if notifier is not None:
+            # Text only: level, reason and time leave this machine, never the image.
+            for person in people:
+                if person['notify']:
+                    notifier.send(person['level'], f"ChildSafe: NGUY HIỂM (người {person['id']})",
+                                  f"{person['reason'] or 'Vật nguy cơ'} · {time.strftime('%H:%M:%S')}")
+            if notifier.status['last_error']:
+                limitations.append('Chưa gửi được cảnh báo tới điện thoại ('+notifier.status['last_error']+').')
         max_gap = self.cfg['temporal'].get('max_gap_s',.25)
         if frame_gap > max_gap or out['inference_s'] > max_gap:
             limitations.append(f'Khoảng giữa hai frame {frame_gap*1000:.0f} ms (xử lý {out["inference_s"]*1000:.0f} ms) '
@@ -403,6 +415,8 @@ def create_app(demo: Demo) -> FastAPI:
                 'assessment_scope':'Vật gần vùng miệng trên ảnh; chưa nhận diện nghẹn',
                 'product_scope':product_scope(demo.cfg, getattr(getattr(demo,'pipeline',None),'detector',None)),
                 'hazard_policy':demo.cfg.get('hazard_policy',{}),
+                'phone_alerts':(dict(demo.notifier.status, url=demo.notifier.url)
+                                if getattr(demo,'notifier',None) is not None else None),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
     @app.post("/api/frame")

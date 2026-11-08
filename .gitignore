@@ -1,5 +1,6 @@
 .venv/
 .venv-relay/
+.venv-notify/
 __pycache__/
 *.pyc
 .pytest_cache/
