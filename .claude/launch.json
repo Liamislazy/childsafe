@@ -18,6 +18,12 @@
       "runtimeExecutable": ".venv/Scripts/python.exe",
       "runtimeArgs": ["-X", "utf8", "scripts/play_area_demo.py", "--port", "8002"],
       "port": 8002
+    },
+    {
+      "name": "label-tool",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-X", "utf8", "scripts/label_tool.py", "--port", "8003"],
+      "port": 8003
     }
   ]
 }

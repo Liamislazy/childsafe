@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChildSafe — Gán nhãn detector</title>
+<style>
+:root{--bg:#f6f7f9;--panel:#fff;--text:#1d2330;--muted:#667085;--line:#e3e6eb;--accent:#3b6fd8;--chip:#eef1f6;--bad:#c94535;--ok:#2e7d4f}
+@media(prefers-color-scheme:dark){:root{--bg:#12151b;--panel:#1b2029;--text:#e7eaf0;--muted:#98a2b3;--line:#2b3240;--accent:#6d97f0;--chip:#252c38;--bad:#ef6b5a;--ok:#5cc08a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:14px 24px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap}header strong{font-size:18px}
+nav{display:flex;gap:8px;margin-left:auto}main{max-width:1400px;margin:auto;padding:20px}
+button,select,input[type=text]{font:inherit;border:1px solid var(--line);border-radius:8px;padding:9px 12px;background:var(--chip);color:var(--text)}
+button{cursor:pointer;min-height:42px}button.primary{background:var(--accent);border-color:var(--accent);color:#fff}button:disabled{opacity:.5;cursor:not-allowed}
+button.tab[aria-pressed=true]{background:var(--accent);color:#fff;border-color:var(--accent)}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:20px;align-items:start}
+.stage{position:relative;background:#10141b;border-radius:10px;overflow:hidden;aspect-ratio:4/3}.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage canvas{cursor:crosshair}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0}
+.note{color:var(--muted);font-size:14px}.error{color:var(--bad);min-height:22px}.boxes li{margin:6px 0}
+.sheet{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:12px}
+.thumb{position:relative;border:3px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer;background:#10141b}
+.thumb canvas{display:block;width:100%}.thumb.reject{border-color:var(--bad)}.thumb .tag{position:absolute;top:6px;left:6px;background:var(--bad);color:#fff;font-size:12px;padding:2px 6px;border-radius:4px;display:none}
+.thumb.reject .tag{display:block}.counts{font-size:14px;color:var(--muted)}[hidden]{display:none!important}
+@media(max-width:900px){.grid{grid-template-columns:1fr}main{padding:14px}}
+</style>
+</head>
+<body>
+<header><strong>ChildSafe</strong><span class="note">Gán nhãn cho detector dao/nĩa/kéo/bút · chỉ chạy trên máy này</span>
+<nav><button class="tab" data-tab="capture" aria-pressed="true">Chụp &amp; gán nhãn</button><button class="tab" data-tab="review" aria-pressed="false">Duyệt nhãn</button></nav></header>
+<main>
+<section id="capture" class="grid">
+ <div class="card">
+  <div class="stage"><video id="video" autoplay playsinline muted></video><canvas id="draw" hidden></canvas></div>
+  <div class="row"><button id="camera" class="primary">Bật camera</button><button id="shoot" disabled>Chụp ảnh</button><button id="retake" disabled>Chụp lại</button></div>
+  <p class="note">Sau khi chụp, kéo chuột trên ảnh để vẽ khung quanh từng dao, nĩa, kéo hoặc bút. Thìa, tay không, điện thoại… thì không vẽ: đó là ảnh nền giúp model bớt nhầm.</p>
+ </div>
+ <div class="card">
+  <label class="row"><input type="checkbox" id="consent"> Người trong ảnh là người lớn và đã đồng ý</label>
+  <div class="row"><label>Mã người <input type="text" id="person" value="P1" size="6"></label><label>Mã buổi <input type="text" id="session" value="S1" size="6"></label></div>
+  <div class="row"><label>Loại vật của khung tiếp theo <select id="label"><option value="knife">Dao</option><option value="fork">Nĩa</option><option value="scissors">Kéo</option><option value="pen">Bút</option></select></label></div>
+  <ol id="boxes" class="boxes"></ol>
+  <label class="row"><input type="checkbox" id="complete"> Đã vẽ khung cho mọi dao/nĩa/kéo/bút thấy trong ảnh</label>
+  <div class="row"><button id="save" class="primary" disabled>Lưu ảnh và nhãn</button><button id="undo" disabled>Xóa ảnh vừa lưu</button></div>
+  <p id="error" class="error" role="alert"></p>
+  <p id="saved" class="counts"></p>
+  <p class="note">Ảnh lưu ở data/detector/own trên máy này, không ghi video và không tải lên đâu. Không đưa vật sắc lại gần mặt khi chụp.</p>
+ </div>
+</section>
+<section id="review" hidden>
+ <div class="card">
+  <div class="row"><label>Bộ ảnh <select id="set"><option value="openimages">Open Images</option><option value="own">Ảnh tự chụp</option></select></label>
+   <span id="progress" class="counts"></span></div>
+  <p class="note">Bấm vào ảnh có khung sai, thiếu khung cho dao/nĩa/kéo/bút, hoặc ảnh không phù hợp (tranh vẽ, quá mờ). Ảnh bị đánh dấu sẽ không dùng để train. Rồi bấm “Lưu trang này”.</p>
+  <div class="sheet" id="sheet"></div>
+  <div class="row"><button id="savePage" class="primary">Lưu trang này</button><span id="pageNote" class="counts"></span></div>
+  <p id="reviewError" class="error" role="alert"></p>
+ </div>
+</section>
+</main>
+<script src="/label-tool.js"></script>
+</body></html>
