@@ -47,6 +47,26 @@ def _isnan(x) -> bool:
     return x is None or (isinstance(x, float) and math.isnan(x))
 
 
+def _label(x) -> str:
+    """A held-object label; an empty CSV cell is read back as NaN, which must not count as one."""
+    return x if isinstance(x, str) else ''
+
+
+def _held_vote(frames: deque, t: float, label: str, confident: bool, rc: dict) -> bool:
+    """Vote over rules.held_sharp_window_s: at least two confident frames, at least half of the
+    frames, spanning held_sharp_danger_s. YOLO's label for one held object flickers between frames.
+    Its own frame-gap limit: this is not a dwell at the mouth, and with YOLO11m frames arrive about
+    0.3 s apart (more than temporal.max_gap_s), which used to clear the vote every frame."""
+    if frames and not 0 < t - frames[-1][0] <= rc.get('held_sharp_max_gap_s', .5):
+        frames.clear()
+    frames.append((t, label if confident else ''))
+    while t - frames[0][0] > rc.get('held_sharp_window_s', .6):
+        frames.popleft()
+    hits = [ts for ts, hit in frames if hit]
+    return (len(hits) >= 2 and 2 * len(hits) >= len(frames)
+            and hits[-1] - hits[0] >= rc.get('held_sharp_danger_s', .2) - 1e-9)
+
+
 class AlertProcessor:
     def __init__(self, cfg: dict, components: Components | None = None):
         self.cfg = cfg
@@ -90,6 +110,7 @@ class AlertProcessor:
         self.last_classify_t = None
         if not keep_held_sharp or not hasattr(self, 'sharp_frames'):
             self.sharp_frames = deque()   # (t, confident knife/scissors label or '') over rules.held_sharp_window_s
+            self.caution_frames = deque()  # the same for a held fork (rules.held_caution_labels)
 
     # ---- D2 cascade -------------------------------------------------------------------
     def wants_classification(self, f: dict) -> bool:
@@ -112,7 +133,8 @@ class AlertProcessor:
             # Keep the knife vote only when the hand merely switched objects and still holds a knife
             # or scissors; a knife replaced by a spoon (or a new person) starts from nothing.
             self.reset(keep_held_sharp=f.get('object_switched', False) and not f.get('person_reset', False)
-                       and not f.get('association_ambiguous', False) and bool(f.get('held_sharp_label')))
+                       and not f.get('association_ambiguous', False)
+                       and bool(_label(f.get('held_sharp_label')) or _label(f.get('held_caution_label'))))
         t = f["t"]
         tc, sc, rc = self.cfg["temporal"], self.cfg["smoothing"], self.cfg["rules"]
         self.frame += 1
@@ -308,30 +330,26 @@ class AlertProcessor:
         # flickers between frames (knife/fork/spoon), so DANGER is a vote over held_sharp_window_s:
         # at least two confident knife/scissors frames, at least half of the frames, spanning
         # held_sharp_danger_s. A weaker detection raises CAUTION.
-        sharp_label = (f.get('held_sharp_label', '') if modern and valid
-                       and not f.get('association_ambiguous', False) else '')
-        # Its own frame-gap limit: this is not a dwell at the mouth, and with YOLO11m frames arrive
-        # about 0.3 s apart (more than temporal.max_gap_s), which used to clear the vote every frame.
-        if self.sharp_frames and not 0 < t - self.sharp_frames[-1][0] <= rc.get('held_sharp_max_gap_s', .5):
-            self.sharp_frames.clear()
-        self.sharp_frames.append((t, sharp_label if f.get('held_sharp_confident', False) else ''))
-        while t - self.sharp_frames[0][0] > rc.get('held_sharp_window_s', .6):
-            self.sharp_frames.popleft()
-        hits = [(ts, label) for ts, label in self.sharp_frames if label]
-        sharp_in_hand = (len(hits) >= 2 and 2 * len(hits) >= len(self.sharp_frames)
-                         and hits[-1][0] - hits[0][0] >= rc.get('held_sharp_danger_s', .2) - 1e-9)
+        usable = modern and valid and not f.get('association_ambiguous', False)
+        sharp_label = _label(f.get('held_sharp_label')) if usable else ''
+        sharp_in_hand = _held_vote(self.sharp_frames, t, sharp_label, f.get('held_sharp_confident', False), rc)
+        # A fork in the hand (rules.held_caution_labels) gets the same vote but only CAUTION.
+        fork_label = _label(f.get('held_caution_label')) if usable else ''
+        fork_in_hand = _held_vote(self.caution_frames, t, fork_label, f.get('held_caution_confident', False), rc)
         # YOLO confuses the two (a held knife came back as 'scissors'), so the reason names both.
         if sharp_in_hand:
             level, reason = DANGER, 'knife or scissors held in hand'
         elif sharp_label and level < CAUTION:
             level, reason = CAUTION, 'possible knife or scissors in hand'
+        elif fork_in_hand and level < CAUTION:
+            level, reason = CAUTION, f'{fork_label or "fork"} held in hand'
         end_reason = ''
         if self.event_active and not (held or caution_held):
             if not f.get('source_ok', True):
                 end_reason = 'source_disconnected'
             elif f.get('person_left', False):
                 end_reason = 'person_left_frame'
-            elif not sharp_in_hand and (not visible or f.get('association_ambiguous', False)
+            elif not (sharp_in_hand or fork_in_hand) and (not visible or f.get('association_ambiguous', False)
                                         or (modern and not object_present)
                                         or (self.event_reliable and missing_evidence)):
                 end_reason = 'observation_lost'

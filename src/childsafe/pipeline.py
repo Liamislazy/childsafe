@@ -384,6 +384,15 @@ class FramePipeline:
             else:
                 f.update(held_sharp_label=sharp.label, held_sharp_conf=sharp.confidence,
                          held_sharp_confident=sharp.confidence >= rules.get('held_sharp_min_conf', .6))
+            # A fork in the hand (rules.held_caution_labels) raises only CAUTION; at the mouth the
+            # mouth rule can still make it DANGER.
+            held = max((d for d in objects if d.label in rules.get('held_caution_labels', [])),
+                       key=lambda d: d.confidence, default=None)
+            if held is None or pid in ambiguous:
+                f.update(held_caution_label='', held_caution_confident=False)
+            else:
+                f.update(held_caution_label=held.label,
+                         held_caution_confident=held.confidence >= rules.get('held_sharp_min_conf', .6))
             obj, proximity = None, None
             if objects:
                 # Select by visible mask proximity, so a long object's tip is not missed.

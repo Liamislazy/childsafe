@@ -37,6 +37,23 @@ def test_knife_label_flickering_with_fork_still_reaches_danger():
     assert out['level'] < DANGER
 
 
+def test_fork_in_hand_is_caution_never_danger():
+    # In a webcam test YOLO saw the fork only every other frame and the demo stayed BÌNH THƯỜNG.
+    proc = AlertProcessor(load_config())
+    for i in range(8):
+        label = 'fork' if i % 2 == 0 else ''
+        out = proc.step(far_from_mouth(i*.1, held_caution_label=label, held_caution_confident=bool(label)))
+        assert out['level'] < DANGER
+    assert out['level'] == CAUTION and out['reason'] == 'fork held in hand'
+    weak = AlertProcessor(load_config())
+    for i in range(8):
+        out = weak.step(far_from_mouth(i*.1, held_caution_label='fork', held_caution_confident=False))
+    assert out['level'] < CAUTION
+    for i in range(8, 16):                      # fork put down
+        out = proc.step(far_from_mouth(i*.1, held_caution_label='', held_caution_confident=False))
+    assert out['level'] < CAUTION
+
+
 def test_switching_held_object_keeps_the_knife_vote_but_a_new_person_does_not():
     # In a webcam test the held object flipped between the knife and another box every few frames,
     # each switch resetting history and, before this, the knife vote too.
@@ -118,7 +135,7 @@ def test_pipeline_links_knife_in_hand_to_danger_but_not_a_knife_elsewhere():
     on_table = run([Detection((280,200,330,230),'knife',.8)])
     assert on_table['level'] < DANGER
     fork = run([Detection((30,150,70,200),'fork',.8)])
-    assert fork['level'] < 2
+    assert fork['level'] == CAUTION and fork['reason'] == 'fork held in hand'
 
 
 def test_knife_inside_a_person_with_no_visible_hand_counts_as_held():

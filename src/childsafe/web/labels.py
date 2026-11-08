@@ -29,6 +29,9 @@ REASONS = {
     'frame expired during inference':'Ảnh đã hết hạn trong lúc xử lý',
     'object crop too small for classification':'Vùng vật quá nhỏ để phân loại',
     'landmark model unavailable':'Bộ xác định mốc chưa sẵn sàng',
+    'knife or scissors held in hand':'Đang cầm dao hoặc kéo trên tay',
+    'possible knife or scissors in hand':'Có thể đang cầm dao hoặc kéo',
+    'fork held in hand':'Đang cầm nĩa trên tay',
 }
 
 
