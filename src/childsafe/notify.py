@@ -11,12 +11,20 @@ import json
 import queue
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 from childsafe.config import ROOT
 
 STORE = ROOT / 'outputs' / 'phone_alerts' / 'subscriptions.json'   # outputs/ is git-ignored
+
+
+def _describe(error: Exception) -> str:
+    """Short reason for the demo's status line; a wrong token is the usual setup mistake."""
+    if isinstance(error, urllib.error.HTTPError):
+        return 'HTTP 401: CHILDSAFE_NOTIFY_TOKEN khác ALERT_TOKEN' if error.code == 401 else f'HTTP {error.code}'
+    return type(error).__name__
 
 
 class PhoneNotifier:
@@ -67,7 +75,7 @@ class PhoneNotifier:
                 self.status.update(sent=self.status['sent'] + out.get('sent', 0),
                                    subscribers=out.get('subscribers'), last_error='', last_sent_t=time.time())
             except Exception as error:      # network/DNS/HTTP errors: report, keep the demo running
-                self.status['last_error'] = type(error).__name__
+                self.status['last_error'] = _describe(error)
 
     def _sync(self):
         """Back up the service's subscriptions locally, or restore them if it has none."""
@@ -88,7 +96,7 @@ class PhoneNotifier:
                 self._sync()
                 self.status['last_error'] = ''
             except Exception as error:
-                self.status['last_error'] = type(error).__name__
+                self.status['last_error'] = _describe(error)
             self._stop.wait(self.keepalive_s)
 
     def close(self):

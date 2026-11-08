@@ -82,6 +82,23 @@ def test_unreachable_service_is_reported_not_raised(tmp_path):
         PhoneNotifier('http://example.com', 'secret')
 
 
+def test_wrong_token_is_named_in_the_status(tmp_path):
+    class Refuse(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(401); self.send_header('Content-Length', '0'); self.end_headers()
+
+        def log_message(self, *args):
+            pass
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Refuse)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    notifier = PhoneNotifier(f'http://127.0.0.1:{server.server_address[1]}', 'wrong', store=tmp_path / 's.json', keepalive_s=60)
+    try:
+        assert wait(lambda: notifier.status['last_error'].startswith('HTTP 401'))
+    finally:
+        notifier.close()
+        server.shutdown()
+
+
 def test_web_demo_sends_danger_once_without_images(monkeypatch):
     now = [0.]
     monkeypatch.setattr('childsafe.web.app.time', SimpleNamespace(perf_counter=lambda: now[0], strftime=time.strftime))
