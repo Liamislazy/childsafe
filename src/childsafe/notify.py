@@ -28,11 +28,16 @@ def _describe(error: Exception) -> str:
 
 
 class PhoneNotifier:
+    # Quiet time per level. In a webcam test one person got five track IDs in 39 s and each new ID
+    # started a fresh DANGER event, so the phone buzzed again seconds later for the same knife.
+    REPEAT_S = {2: 20., 1: 60.}
+
     def __init__(self, url: str, token: str, store: Path = STORE, keepalive_s: float = 600., timeout_s: float = 15.):
         if not url.startswith('https://') and not url.startswith('http://127.0.0.1'):
             raise ValueError('phone alerts need an https:// service URL')
         self.url, self.token, self.store = url.rstrip('/'), token, Path(store)
         self.keepalive_s, self.timeout_s = keepalive_s, timeout_s
+        self._last_sent = {}               # level -> time of the last alert at that level
         self.queue: queue.Queue = queue.Queue(maxsize=20)
         self.status = dict(sent=0, subscribers=None, last_error='', last_sent_t=None)
         self._stop = threading.Event()
@@ -40,6 +45,16 @@ class PhoneNotifier:
                          threading.Thread(target=self._keepalive, daemon=True, name='phone-alerts-keepalive')]
         for thread in self._threads:
             thread.start()
+
+    def alert(self, level: int, title: str, body: str, t: float | None = None) -> bool:
+        """Send unless the phone heard this level recently; CAUTION also waits after a DANGER."""
+        t = time.monotonic() if t is None else t
+        recent = [self._last_sent.get(level)] + ([self._last_sent.get(2)] if level == 1 else [])
+        if any(s is not None and t - s < self.REPEAT_S.get(level, 60.) for s in recent):
+            return False
+        self._last_sent[level] = t
+        self.send(level, title, body)
+        return True
 
     def send(self, level: int, title: str, body: str):
         """Queue an alert; when the queue is full the oldest waiting alert is dropped."""

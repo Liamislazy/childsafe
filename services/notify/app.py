@@ -129,7 +129,7 @@ def subscribe(body: Subscribe):
 def test(body: Code, request: Request):
     _phone(body.code)
     return {'sent': push({'level': 0, 'title': 'ChildSafe: thử thông báo',
-                          'body': 'Điện thoại này sẽ nhận cảnh báo NGUY HIỂM.'}, request)}
+                          'body': 'Điện thoại này sẽ nhận cảnh báo NGUY HIỂM và CHÚ Ý.'}, request)}
 
 
 @app.get('/api/events')

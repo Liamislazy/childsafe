@@ -99,13 +99,27 @@ def test_wrong_token_is_named_in_the_status(tmp_path):
         server.shutdown()
 
 
-def test_web_demo_sends_danger_once_without_images(monkeypatch):
+def test_quiet_time_per_level_and_no_caution_right_after_danger(tmp_path):
+    notifier = PhoneNotifier('http://127.0.0.1:9', 'secret', store=tmp_path / 's.json', keepalive_s=60, timeout_s=1)
+    sent = []
+    notifier.send = lambda *a: sent.append(a[0])
+    try:
+        assert notifier.alert(2, 'd', 'b', t=0) and not notifier.alert(2, 'd', 'b', t=10)   # same knife, new track ID
+        assert not notifier.alert(1, 'c', 'b', t=30)            # caution right after danger
+        assert notifier.alert(2, 'd', 'b', t=21) and notifier.alert(1, 'c', 'b', t=90)
+        assert not notifier.alert(1, 'c', 'b', t=120)
+        assert sent == [2, 2, 1]
+    finally:
+        notifier.close()
+
+
+def test_web_demo_alerts_on_each_rise_without_images(monkeypatch):
     now = [0.]
     monkeypatch.setattr('childsafe.web.app.time', SimpleNamespace(perf_counter=lambda: now[0], strftime=time.strftime))
     monkeypatch.setattr('childsafe.pipeline.time', SimpleNamespace(perf_counter=lambda: now[0]))
     sent = []
     demo = runtime('unsafe')
-    demo.notifier = SimpleNamespace(send=lambda *a: sent.append(a), status={'last_error': ''}, url='https://x', close=lambda: None)
+    demo.notifier = SimpleNamespace(alert=lambda *a: sent.append(a), status={'last_error': ''}, url='https://x', close=lambda: None)
     client = TestClient(create_app(demo))
     try:
         for index in range(15):
@@ -113,6 +127,6 @@ def test_web_demo_sends_danger_once_without_images(monkeypatch):
             client.post('/api/frame', content=image())
     finally:
         demo.close()
-    assert len(sent) == 1
-    level, title, body = sent[0]
-    assert level == 2 and 'NGUY HIỂM' in title and isinstance(body, str)
+    levels = [a[0] for a in sent]
+    assert levels and levels[-1] == 2 and levels == sorted(set(levels))   # one alert per rise, no repeats
+    assert 'NGUY HIỂM' in sent[-1][1] and all(isinstance(a[2], str) for a in sent)

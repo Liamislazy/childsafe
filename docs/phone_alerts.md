@@ -1,9 +1,19 @@
 # Cảnh báo NGUY HIỂM trên điện thoại (Render + Web Push)
 
-Camera và AI vẫn chạy trên laptop. Khi một sự cố mới lên **NGUY HIỂM**, laptop gửi lên dịch vụ
-nhỏ trên Render đúng ba thứ: mức, lý do, giờ. **Không gửi ảnh hay video.** Render đẩy thông báo
-xuống các điện thoại đã mở trang và cho phép thông báo (Chrome trên Android). CHÚ Ý không bắn
-thông báo; thông báo lặp bị chặn trong `temporal.cooldown_s` (5 s) sau khi NGUY HIỂM kết thúc.
+Camera và AI vẫn chạy trên laptop. Khi mức chung của khung hình tăng lên **CHÚ Ý** hoặc
+**NGUY HIỂM**, laptop gửi lên dịch vụ nhỏ trên Render đúng ba thứ: mức, lý do, giờ. **Không gửi
+ảnh hay video.** Render đẩy thông báo xuống các điện thoại đã mở trang và cho phép thông báo
+(Chrome trên Android).
+
+Mỗi mức có thời gian nghỉ (`PhoneNotifier.REPEAT_S`): NGUY HIỂM tối đa một lần mỗi 20 s, CHÚ Ý
+một lần mỗi 60 s và không gửi CHÚ Ý trong 60 s sau một NGUY HIỂM. Báo theo mức chung, không theo
+từng người: trong một lần thử webcam, một người bị gán 5 số người trong 39 s và mỗi số mới từng
+làm điện thoại báo lại.
+
+Rung và chuông do Android quyết định theo cài đặt thông báo của Chrome cho trang này; trang web
+không tự bật được. Nếu thông báo đến mà không rung: Cài đặt → Ứng dụng → Chrome → Thông báo →
+mục `childsafe-alerts.onrender.com` → bật âm thanh, rung, hiện nổi (tên mục khác nhau giữa
+HyperOS và One UI).
 
 ```
 laptop (camera + AI) --chữ, có mã bí mật--> Render: services/notify --Web Push--> Chrome Android

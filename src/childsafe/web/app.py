@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from PIL import Image,UnidentifiedImageError
 from starlette.concurrency import run_in_threadpool
 
-from childsafe.alerts.processor import LEVEL_NAMES, AlertProcessor
+from childsafe.alerts.processor import CAUTION, DANGER, LEVEL_NAMES, NORMAL, AlertProcessor
 from childsafe.data.corruptions import KINDS, corrupt
 from childsafe.vision.geometry import MOUTH, GeometryExtractor
 from childsafe.vision.landmarks import LandmarkDetector
@@ -321,11 +321,14 @@ class RuntimeDemo(Demo):
             limitations.append('Thiếu thời gian để dò vật trong vùng nhỏ ở ảnh này; có thể bỏ sót vật ở xa.')
         notifier = getattr(self, 'notifier', None)
         if notifier is not None:
-            # Text only: level, reason and time leave this machine, never the image.
-            for person in people:
-                if person['notify']:
-                    notifier.send(person['level'], f"ChildSafe: NGUY HIỂM (người {person['id']})",
-                                  f"{person['reason'] or 'Vật nguy cơ'} · {time.strftime('%H:%M:%S')}")
+            # Text only: level, reason and time leave this machine, never the image. Uses the
+            # frame's overall level, not per person: track IDs change and each new ID would
+            # buzz again. notifier.alert adds a quiet time per level.
+            level, previous = out['level'], getattr(self, 'phone_level', NORMAL)
+            self.phone_level = level
+            if level > previous and level >= CAUTION:
+                notifier.alert(level, 'ChildSafe: ' + ('NGUY HIỂM' if level >= DANGER else 'CHÚ Ý'),
+                               f"{reason_vi(out['reason']) or 'Vật cần chú ý'} · {time.strftime('%H:%M:%S')}")
             if notifier.status['last_error']:
                 limitations.append('Chưa gửi được cảnh báo tới điện thoại ('+notifier.status['last_error']+').')
         max_gap = self.cfg['temporal'].get('max_gap_s',.25)
