@@ -53,6 +53,12 @@ def test_gone_subscription_is_dropped_and_laptop_can_restore(service, monkeypatc
     assert client.post('/api/restore', json={'subscriptions': [SUB, {'endpoint': 'bad'}]}, headers=AUTH).json() == {'subscribers': 1}
 
 
+def test_laptop_reads_pairing_code_for_its_qr(service):
+    _, client, _ = service
+    assert client.get('/api/pairing').status_code == 401
+    assert client.get('/api/pairing', headers=AUTH).json() == {'code': 'abc123'}
+
+
 def test_page_and_service_worker_are_served(service):
     _, client, _ = service
     assert 'Bật thông báo' in client.get('/').text

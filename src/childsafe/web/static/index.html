@@ -63,12 +63,21 @@
   .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
   .hidden { display: none; }
   .err { color: var(--danger); font-size: 13px; margin-top: 8px; }
+  dialog#phoneDialog { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--text);
+                       padding: 20px; max-width: 380px; width: calc(100% - 32px); }
+  dialog#phoneDialog::backdrop { background: rgba(0,0,0,.45); }
+  #phoneQr { display: block; width: 240px; height: 240px; margin: 12px auto; background: #fff; border-radius: 8px; }
+  #phoneDialog ol { padding-left: 20px; margin: 8px 0; font-size: 14px; }
+  #phoneState { font-weight: 600; margin: 8px 0; } #phoneState.ok { color: var(--normal); } #phoneState.bad { color: var(--danger); }
+  #phoneBtn .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); margin-left: 6px; }
+  #phoneBtn .dot.ok { background: var(--normal); } #phoneBtn .dot.bad { background: var(--danger); }
 </style>
 </head>
 <body>
 <header>
   <h1>ChildSafe — thử cảnh báo camera</h1>
   <a class="btn ghost" href="/play-area">Chuẩn bị góc chơi</a>
+  <button id="phoneBtn" class="btn ghost" type="button">Điện thoại<span class="dot"></span></button>
   <span class="privacy">Xử lý trên máy này; không ghi video. Chỉ tải ảnh kiểm tra khi bạn bấm.</span>
 </header>
 
@@ -117,6 +126,24 @@
 
 </main>
 
+<dialog id="phoneDialog">
+  <h2 style="margin:0;font-size:18px">Nhận cảnh báo trên điện thoại</h2>
+  <div id="phoneOn" class="hidden">
+    <img id="phoneQr" alt="Mã QR ghép điện thoại">
+    <ol>
+      <li>Mở camera điện thoại và quét mã này.</li>
+      <li>Mở link bằng <b>Chrome</b>.</li>
+      <li>Bấm <b>Bật thông báo trên điện thoại này</b> rồi cho phép.</li>
+    </ol>
+    <p id="phoneState" role="status"></p>
+    <p class="note">Điện thoại chỉ nhận chữ (mức, lý do, giờ), không nhận hình ảnh. Mỗi điện thoại quét một lần.</p>
+  </div>
+  <div id="phoneOff" class="hidden">
+    <p class="note">Chưa bật gửi cảnh báo tới điện thoại. Chạy demo kèm <code>--notify-url</code> và biến
+      <code>CHILDSAFE_NOTIFY_TOKEN</code> (xem docs/phone_alerts.md), rồi mở lại mục này.</p>
+  </div>
+  <form method="dialog" style="text-align:right;margin-top:12px"><button class="btn ghost">Đóng</button></form>
+</dialog>
 <script>
 const $ = id => document.getElementById(id);
 let info = null, running = false, starting = false, stream = null, frames = 0, lastFpsT = performance.now();
@@ -460,6 +487,25 @@ for (const action of ['start','end']) {
 }
 $("sev").oninput = () => $("sevVal").textContent = $("sev").value;
 loadInfo();
+// ---- phone pairing: QR code + live status (polls only while the dialog is open) -----------------
+let phoneTimer = null, phoneQrShown = false;
+async function phoneStatus() {
+  let s;
+  try { s = await (await fetch('/api/phone', {cache: 'no-store'})).json(); } catch { return; }
+  const dot = document.querySelector('#phoneBtn .dot');
+  $('phoneOn').classList.toggle('hidden', !s.enabled); $('phoneOff').classList.toggle('hidden', !!s.enabled);
+  if (!s.enabled) { dot.className = 'dot'; return; }
+  if (s.paired && !phoneQrShown) { $('phoneQr').src = '/api/phone/qr.svg?' + Date.now(); phoneQrShown = true; }
+  const state = $('phoneState');
+  if (s.last_error) { state.textContent = 'Chưa kết nối được dịch vụ cảnh báo: ' + s.last_error; state.className = 'bad'; }
+  else if (!s.paired) { state.textContent = 'Đang kết nối dịch vụ cảnh báo… (lần đầu có thể mất khoảng 1 phút)'; state.className = ''; }
+  else if (s.subscribers) { state.textContent = `Đã ghép ${s.subscribers} điện thoại ✓`; state.className = 'ok'; }
+  else { state.textContent = 'Chưa có điện thoại nào. Quét mã để ghép.'; state.className = ''; }
+  dot.className = 'dot ' + (s.last_error ? 'bad' : s.subscribers ? 'ok' : '');
+}
+$('phoneBtn').onclick = () => { $('phoneDialog').showModal(); phoneStatus(); clearInterval(phoneTimer); phoneTimer = setInterval(phoneStatus, 3000); };
+$('phoneDialog').addEventListener('close', () => clearInterval(phoneTimer));
+phoneStatus();
 </script>
 </body>
 </html>

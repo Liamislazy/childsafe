@@ -25,7 +25,7 @@ class FakeService(BaseHTTPRequestHandler):
 
     def do_GET(self):
         FakeService.auth.append(self.headers.get('Authorization'))
-        self._reply({'subscriptions': FakeService.subs})
+        self._reply({'code': 'abc123'} if self.path == '/api/pairing' else {'subscriptions': FakeService.subs})
 
     def do_POST(self):
         FakeService.auth.append(self.headers.get('Authorization'))
@@ -69,6 +69,29 @@ def test_alert_is_sent_and_lost_subscriptions_are_restored(service, tmp_path):
         assert set(FakeService.auth) == {'Bearer secret'}
     finally:
         notifier.close()
+
+
+def test_demo_shows_a_pairing_qr_with_the_code_after_the_hash(service, tmp_path):
+    notifier = PhoneNotifier(service, 'secret', store=tmp_path / 's.json', keepalive_s=60)
+    demo = runtime('empty')
+    demo.notifier = notifier
+    client = TestClient(create_app(demo))
+    try:
+        assert wait(lambda: notifier.pairing_code == 'abc123')
+        assert notifier.pairing_url() == service + '/#code=abc123'
+        state = client.get('/api/phone').json()
+        assert state['enabled'] and state['paired'] and state['subscribers'] == 0
+        qr = client.get('/api/phone/qr.svg')
+        assert qr.status_code == 200 and qr.headers['content-type'] == 'image/svg+xml' and b'<svg' in qr.content
+    finally:
+        demo.close()
+    off = runtime('empty')
+    try:
+        client = TestClient(create_app(off))
+        assert client.get('/api/phone').json() == {'enabled': False}
+        assert client.get('/api/phone/qr.svg').status_code == 404
+    finally:
+        off.close()
 
 
 def test_unreachable_service_is_reported_not_raised(tmp_path):

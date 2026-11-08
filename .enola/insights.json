@@ -1,0 +1,3444 @@
+[
+  {
+    "title": "Cyclic dependency detected (7 modules)",
+    "source": "cycles",
+    "description": "The following modules form a dependency cycle: src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision -\u003e src/childsafe. This can cause initialization issues, make refactoring harder, and indicates tight coupling.",
+    "confidence": 1,
+    "evidence": [
+      {
+        "fact": "src/childsafe",
+        "detail": "module \"src/childsafe\" is part of the cycle",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "detail": "module \"src/childsafe/alerts\" is part of the cycle",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "detail": "module \"src/childsafe/classifier\" is part of the cycle",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "detail": "module \"src/childsafe/data\" is part of the cycle",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "detail": "module \"src/childsafe/evaluation\" is part of the cycle",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "detail": "module \"src/childsafe/runtime\" is part of the cycle",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "detail": "module \"src/childsafe/vision\" is part of the cycle",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Introduce an interface to break the cycle",
+      "Extract shared types to a separate package",
+      "Consider merging tightly coupled modules"
+    ]
+  },
+  {
+    "title": "Domain findings do not apply to this repository",
+    "source": "domain",
+    "description": "Three of this explainer's four findings read declarations only Rails writes — associations, controller#action handlers, and a model's table — and this repository declares none of them. That is not a clean result on those three; they were not asked. Outbound integrations, the fourth, is language-agnostic and did run.",
+    "confidence": 1,
+    "evidence": [
+      {
+        "detail": "examined: 0 associations, 0 controller handlers, 0 model tables"
+      }
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/config.load_config (27 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/config.load_config\" is depended upon by 27 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.95,
+    "evidence": [
+      {
+        "file": "src/childsafe/config.py",
+        "symbol": "src/childsafe/config.load_config",
+        "detail": "27 symbols depend on this",
+        "line": 34,
+        "fact_id": "1dae71547495f085fb024d743d4db78e"
+      },
+      {
+        "symbol": "scripts/audit_pen_baseline.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "c1f6eed51a33b2bf910c679e0d712b50"
+      },
+      {
+        "symbol": "scripts/benchmark_classifiers.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "643f19911c97d016ba5a35f2de2b90af"
+      },
+      {
+        "symbol": "scripts/benchmark_optimizations.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "2438f0bd1ade46217d7867211ee408b1"
+      },
+      {
+        "symbol": "scripts/benchmark_runtime.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "eb724cb54895a4de5036051aa2a7577b"
+      },
+      {
+        "symbol": "scripts/check_demo_readiness.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "fe039795ad1f012d309776776844a20f"
+      },
+      {
+        "symbol": "scripts/companion_webcam.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "fc1e18d148c7953c23e640828a8992c9"
+      },
+      {
+        "symbol": "scripts/compare_ood.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "527664bc4e0713f175b606d48b14d48d"
+      },
+      {
+        "symbol": "scripts/diagnose_session.main",
+        "detail": "depends on src/childsafe/config.load_config",
+        "fact_id": "69d968d83833ebb16238a79fe4b6d0f0"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/vision/tracking.iou (11 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/vision/tracking.iou\" is depended upon by 11 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.95,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/tracking.py",
+        "symbol": "src/childsafe/vision/tracking.iou",
+        "detail": "11 symbols depend on this",
+        "line": 7,
+        "fact_id": "0adc03ca2e9d9c8c5c4cf712b6f398a1"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "a49acd26e25868354e9dea7473884a3a"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline._zoom_detect",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "208744845978796f86eb0860378b7f80"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline.process",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "851a14bd075b78c52948631fc09b3276"
+      },
+      {
+        "symbol": "src/childsafe/vision/detection.SupplementalDetector",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "9fca08e9502c03ae675d79f53758f497"
+      },
+      {
+        "symbol": "src/childsafe/vision/detection.SupplementalDetector.detect_roi",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "adccd6b5676b3ed8342a050a6b347398"
+      },
+      {
+        "symbol": "src/childsafe/vision/objects.same_object",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "6ba8161e88fcc09fcf00b69887797196"
+      },
+      {
+        "symbol": "src/childsafe/vision/tracking.PersonTracker",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "7cb3c275c3ee4e59f57295d9c742d4b1"
+      },
+      {
+        "symbol": "src/childsafe/vision/tracking.PersonTracker.update",
+        "detail": "depends on src/childsafe/vision/tracking.iou",
+        "fact_id": "ff3070939124db5ee7062c38fe4e089d"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/evaluation/sessions.file_hash (9 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/evaluation/sessions.file_hash\" is depended upon by 9 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.95,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/sessions.py",
+        "symbol": "src/childsafe/evaluation/sessions.file_hash",
+        "detail": "9 symbols depend on this",
+        "line": 12,
+        "fact_id": "3c6822586d2e9f556f450310de2459a4"
+      },
+      {
+        "symbol": "scripts/finalize_session.finalize",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "6fcfb029d0016aee5e130cfbd7be8699"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.load_records",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "3e25048fdb038491d99b728894522eb6"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/sessions.create_session",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "42c9af0dc1df18df8454a0e99fbf09c2"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "a49acd26e25868354e9dea7473884a3a"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline.__init__",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "187eda74ad120e5f00ca4c79c2e47f2c"
+      },
+      {
+        "symbol": "src/childsafe/runtime/readiness.demo_readiness",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "de85bfe7abd2ee6fc8b149abf25d9d85"
+      },
+      {
+        "symbol": "src/childsafe/web/app.RuntimeDemo",
+        "detail": "depends on src/childsafe/evaluation/sessions.file_hash",
+        "fact_id": "27118883ab71e1ed17f4384c1fb01b89"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/companion/relay.RelayStore.now (8 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/companion/relay.RelayStore.now\" is depended upon by 8 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.9312467977146852,
+    "evidence": [
+      {
+        "file": "src/childsafe/companion/relay.py",
+        "symbol": "src/childsafe/companion/relay.RelayStore.now",
+        "detail": "8 symbols depend on this",
+        "line": 59,
+        "fact_id": "6b6824b12147c542efb74464b026683e"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "4e5c38d017439cc304906bb543ab4639"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "4e5c38d017439cc304906bb543ab4639"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.create_room",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "b9fa2b969b994db57680756a1c7862cd"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.invite",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "8133f8404916fcfab09f73baf6b93ab4"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.join",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "f1a75b6cabd407e6d878f326c0467ff4"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.publish",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "3ec77547bb9b2e45f69c5da58cb67b73"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.read",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "bd5ab3ffa506e049ad87491585d1aab8"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.start",
+        "detail": "depends on src/childsafe/companion/relay.RelayStore.now",
+        "fact_id": "0e26e4c03e6b552f43a4a215c8006948"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/data/corruptions.corrupt (8 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/data/corruptions.corrupt\" is depended upon by 8 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.9312467977146852,
+    "evidence": [
+      {
+        "file": "src/childsafe/data/corruptions.py",
+        "symbol": "src/childsafe/data/corruptions.corrupt",
+        "detail": "8 symbols depend on this",
+        "line": 31,
+        "fact_id": "d95ef5d4c2202c131793e598cb6c8836"
+      },
+      {
+        "symbol": "src/childsafe/data/corruptions.FixedCorruption",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "9958b8cc2218e6cd55ba38ef33bdda65"
+      },
+      {
+        "symbol": "src/childsafe/data/corruptions.FixedCorruption.__call__",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "f9348e981d77a03451f0b9391e023236"
+      },
+      {
+        "symbol": "src/childsafe/data/corruptions.RobustAug",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "f8e456511a37c287ae901dc28cf7e346"
+      },
+      {
+        "symbol": "src/childsafe/data/corruptions.RobustAug.__call__",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "9fd0da97e64235d981e9266e37c45261"
+      },
+      {
+        "symbol": "src/childsafe/web/app.Demo",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "3f3f9bfebe6c2dfa68243d19198cec25"
+      },
+      {
+        "symbol": "src/childsafe/web/app.Demo.frame",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "3fc928d8f6fc86d00684591e89a32563"
+      },
+      {
+        "symbol": "src/childsafe/web/app.RuntimeDemo",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "27118883ab71e1ed17f4384c1fb01b89"
+      },
+      {
+        "symbol": "src/childsafe/web/app.RuntimeDemo.frame",
+        "detail": "depends on src/childsafe/data/corruptions.corrupt",
+        "fact_id": "95cf34f4668988e658a9c13c25900cda"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "High fan-in symbol: src/childsafe/evaluation/sessions.config_hash (8 dependents)",
+    "source": "god-class",
+    "description": "\"src/childsafe/evaluation/sessions.config_hash\" is depended upon by 8 other symbols — well above the repo average. High fan-in concentrates change risk: edits here ripple across many call sites, and it often indicates a missing or overly broad abstraction.",
+    "confidence": 0.9312467977146852,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/sessions.py",
+        "symbol": "src/childsafe/evaluation/sessions.config_hash",
+        "detail": "8 symbols depend on this",
+        "line": 8,
+        "fact_id": "b7f6c696b22867f8115d3a3a195ddec7"
+      },
+      {
+        "symbol": "scripts/finalize_session.finalize",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "6fcfb029d0016aee5e130cfbd7be8699"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.load_records",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "3e25048fdb038491d99b728894522eb6"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.tune",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "b9dfb95654880749ed5b1ae75c307010"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/sessions.create_session",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "42c9af0dc1df18df8454a0e99fbf09c2"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "a49acd26e25868354e9dea7473884a3a"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline.__init__",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "187eda74ad120e5f00ca4c79c2e47f2c"
+      },
+      {
+        "symbol": "src/childsafe/runtime/readiness.demo_readiness",
+        "detail": "depends on src/childsafe/evaluation/sessions.config_hash",
+        "fact_id": "de85bfe7abd2ee6fc8b149abf25d9d85"
+      }
+    ],
+    "suggested_actions": [
+      "Split the symbol along distinct responsibilities its callers use",
+      "Introduce narrower interfaces so callers depend only on what they need",
+      "Stabilize its public contract to limit churn for dependents"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera (fan-in 4, fan-out 56)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera\" is a pinch point: 4 symbols call into it and it calls out to 56 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/CameraNodeService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "detail": "fan-in 4 × fan-out 56 = score 224",
+        "line": 135,
+        "fact_id": "a0d3b7aff17f502c17f3dea823c97567"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "fact_id": "01767742e682a45271a40e688eec1f89"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.activateCamera",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "fact_id": "aded3977105eff3bb103be3a6b679aa0"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.preview",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "fact_id": "54a43a6ff1a6cc04d1926af504db7e1a"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.switchCamera",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "fact_id": "4d76c9108c1d973d94f53799128e023d"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera"
+      },
+      {
+        "symbol": "Matrix",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera"
+      },
+      {
+        "symbol": "STRATEGY_KEEP_ONLY_LATEST",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera"
+      },
+      {
+        "symbol": "Size",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor (fan-in 4, fan-out 36)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor\" is a pinch point: 4 symbols call into it and it calls out to 36 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MainActivity.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "detail": "fan-in 4 × fan-out 36 = score 144",
+        "line": 112,
+        "fact_id": "5909eddde0a185d23f36aadc9ace192e"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.render",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "fact_id": "1d6546b7cca4554ac539893492299263"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "fact_id": "5909eddde0a185d23f36aadc9ace192e"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.run",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "fact_id": "a39dcd4b2f46ae76ed8f8aab83906d60"
+      },
+      {
+        "symbol": "CAUTION",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor"
+      },
+      {
+        "symbol": "DANGER",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor"
+      },
+      {
+        "symbol": "DEGRADED",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor"
+      },
+      {
+        "symbol": "FRESH",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor"
+      },
+      {
+        "symbol": "Intent",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: src/childsafe/pipeline.FramePipeline.process (fan-in 5, fan-out 21)",
+    "source": "hotspots",
+    "description": "\"src/childsafe/pipeline.FramePipeline.process\" is a pinch point: 5 symbols call into it and it calls out to 21 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/pipeline.py",
+        "symbol": "src/childsafe/pipeline.FramePipeline.process",
+        "detail": "fan-in 5 × fan-out 21 = score 105",
+        "line": 275,
+        "fact_id": "851a14bd075b78c52948631fc09b3276"
+      },
+      {
+        "symbol": "scripts/benchmark_optimizations.main",
+        "detail": "calls into src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "2438f0bd1ade46217d7867211ee408b1"
+      },
+      {
+        "symbol": "scripts/benchmark_runtime.main",
+        "detail": "calls into src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "eb724cb54895a4de5036051aa2a7577b"
+      },
+      {
+        "symbol": "scripts/extract_features.main",
+        "detail": "calls into src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "647ed6e891371ebf725f116bac5e7ec1"
+      },
+      {
+        "symbol": "scripts/run_webcam.main",
+        "detail": "calls into src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "4b23610e664af43432ea081444ac57f2"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline",
+        "detail": "calls into src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "a49acd26e25868354e9dea7473884a3a"
+      },
+      {
+        "symbol": "ElevatedQuality",
+        "detail": "called by src/childsafe/pipeline.FramePipeline.process"
+      },
+      {
+        "symbol": "SceneLandmarks",
+        "detail": "called by src/childsafe/pipeline.FramePipeline.process"
+      },
+      {
+        "symbol": "src/childsafe",
+        "detail": "called by src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline._acquire_landmarks",
+        "detail": "called by src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "856b7877a1b9e449cd930c388eee9a96"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline._clear_classification",
+        "detail": "called by src/childsafe/pipeline.FramePipeline.process",
+        "fact_id": "ca06d50dfcc3bbbef38560aa9b37353c"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification (fan-in 4, fan-out 25)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification\" is a pinch point: 4 symbols call into it and it calls out to 25 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "detail": "fan-in 4 × fan-out 25 = score 100",
+        "line": 208,
+        "fact_id": "43e83175c0d9d87074701cccfdb11f45"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "fact_id": "0da5ba0642e96f87e9b0f38b30cd22e0"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "fact_id": "e02fbc95d692801767ea925ba8decff5"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.onStartCommand",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "fact_id": "136938fcf7ef9b3ab3ab5be4e6859f1d"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      },
+      {
+        "symbol": "BigTextStyle",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification"
+      },
+      {
+        "symbol": "BigTextStyle",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification"
+      },
+      {
+        "symbol": "FLAG_IMMUTABLE",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: src/childsafe/config.load_config (fan-in 27, fan-out 3)",
+    "source": "hotspots",
+    "description": "\"src/childsafe/config.load_config\" is a pinch point: 27 symbols call into it and it calls out to 3 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/config.py",
+        "symbol": "src/childsafe/config.load_config",
+        "detail": "fan-in 27 × fan-out 3 = score 81",
+        "line": 34,
+        "fact_id": "1dae71547495f085fb024d743d4db78e"
+      },
+      {
+        "symbol": "scripts/audit_pen_baseline.main",
+        "detail": "calls into src/childsafe/config.load_config",
+        "fact_id": "c1f6eed51a33b2bf910c679e0d712b50"
+      },
+      {
+        "symbol": "scripts/benchmark_classifiers.main",
+        "detail": "calls into src/childsafe/config.load_config",
+        "fact_id": "643f19911c97d016ba5a35f2de2b90af"
+      },
+      {
+        "symbol": "scripts/benchmark_optimizations.main",
+        "detail": "calls into src/childsafe/config.load_config",
+        "fact_id": "2438f0bd1ade46217d7867211ee408b1"
+      },
+      {
+        "symbol": "scripts/benchmark_runtime.main",
+        "detail": "calls into src/childsafe/config.load_config",
+        "fact_id": "eb724cb54895a4de5036051aa2a7577b"
+      },
+      {
+        "symbol": "scripts/check_demo_readiness.main",
+        "detail": "calls into src/childsafe/config.load_config",
+        "fact_id": "fe039795ad1f012d309776776844a20f"
+      },
+      {
+        "symbol": "Path",
+        "detail": "called by src/childsafe/config.load_config"
+      },
+      {
+        "symbol": "src/childsafe",
+        "detail": "called by src/childsafe/config.load_config",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "symbol": "src/childsafe/config._read",
+        "detail": "called by src/childsafe/config.load_config",
+        "fact_id": "19b9123f4ada497b3b737dd55be42e26"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime (fan-in 4, fan-out 19)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime\" is a pinch point: 4 symbols call into it and it calls out to 19 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/CameraNodeService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "detail": "fan-in 4 × fan-out 19 = score 76",
+        "line": 208,
+        "fact_id": "ba23bbc18aab8c7285e745823604eb4a"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "fact_id": "01767742e682a45271a40e688eec1f89"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.bindCamera",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "fact_id": "a0d3b7aff17f502c17f3dea823c97567"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.onDestroy",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "fact_id": "de00360e8bf7234c482a92f8f9bd7b2f"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.onStartCommand",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "fact_id": "11018c909adacdb080dbc546c62d5ab9"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime",
+        "fact_id": "44ef29cc544ea9f4bfd2688ce71c4d25"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.stopForeground",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.stopSelf",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime"
+      },
+      {
+        "symbol": "backend",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime"
+      },
+      {
+        "symbol": "clearAnalyzer",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.CameraNodeService.stopRuntime"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera (fan-in 3, fan-out 23)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera\" is a pinch point: 3 symbols call into it and it calls out to 23 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MainActivity.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera",
+        "detail": "fan-in 3 × fan-out 23 = score 69",
+        "line": 205,
+        "fact_id": "ef46fae24b2391616160e58cddcf7a87"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderPairing",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera",
+        "fact_id": "dd14be423ce593c430a97c1405a8d342"
+      },
+      {
+        "symbol": "DeviceConfig",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera"
+      },
+      {
+        "symbol": "JSONObject",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera"
+      },
+      {
+        "symbol": "MODEL",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera"
+      },
+      {
+        "symbol": "RelayApi",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera"
+      },
+      {
+        "symbol": "SecureConfig",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.pairCamera"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card (fan-in 4, fan-out 17)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card\" is a pinch point: 4 symbols call into it and it calls out to 17 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MainActivity.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card",
+        "detail": "fan-in 4 × fan-out 17 = score 68",
+        "line": 96,
+        "fact_id": "3d5ec1f19d5425848561b1ca68130cad"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderMonitor",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card",
+        "fact_id": "5909eddde0a185d23f36aadc9ace192e"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderPairing",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card",
+        "fact_id": "dd14be423ce593c430a97c1405a8d342"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderSettings",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card",
+        "fact_id": "fae1213217a3a3bfc68ce687ea2ff623"
+      },
+      {
+        "symbol": "GradientDrawable",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card"
+      },
+      {
+        "symbol": "LayoutParams",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card"
+      },
+      {
+        "symbol": "LayoutParams",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card"
+      },
+      {
+        "symbol": "LinearLayout",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card"
+      },
+      {
+        "symbol": "VERTICAL",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.card"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key (fan-in 3, fan-out 19)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key\" is a pinch point: 3 symbols call into it and it calls out to 19 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/SecureConfig.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key",
+        "detail": "fan-in 3 × fan-out 19 = score 57",
+        "line": 30,
+        "fact_id": "6e3fec0c66fa54562bd2acf308b01406"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.SecureConfig",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key",
+        "fact_id": "abd7bb9c56bd11a6a9a5a94861fe5e60"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.load",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key",
+        "fact_id": "865f3c3cbe3a7d42808bcd4190af3ad9"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.save",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key",
+        "fact_id": "31464262ffddd334b85ca6d308936008"
+      },
+      {
+        "symbol": "BLOCK_MODE_GCM",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key"
+      },
+      {
+        "symbol": "Builder",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key"
+      },
+      {
+        "symbol": "ENCRYPTION_PADDING_NONE",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key"
+      },
+      {
+        "symbol": "KEY_ALGORITHM_AES",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.SecureConfig.key"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice (fan-in 3, fan-out 16)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice\" is a pinch point: 3 symbols call into it and it calls out to 16 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "detail": "fan-in 3 × fan-out 16 = score 48",
+        "line": 200,
+        "fact_id": "e02fbc95d692801767ea925ba8decff5"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "fact_id": "0da5ba0642e96f87e9b0f38b30cd22e0"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.run",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "fact_id": "0dd01f93fb6cce1dee339429028a3046"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      },
+      {
+        "symbol": "FRESH",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "fact_id": "44ef29cc544ea9f4bfd2688ce71c4d25"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.notification",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice",
+        "fact_id": "43e83175c0d9d87074701cccfdb11f45"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.getSystemService",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice"
+      },
+      {
+        "symbol": "any",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor (fan-in 3, fan-out 15)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor\" is a pinch point: 3 symbols call into it and it calls out to 15 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MainActivity.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "detail": "fan-in 3 × fan-out 15 = score 45",
+        "line": 193,
+        "fact_id": "074016e8f546f1f50ca9c2d22277303c"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "fact_id": "00dca1d1d17caa91c0d8ca7f85c52939"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.renderPairing",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "fact_id": "dd14be423ce593c430a97c1405a8d342"
+      },
+      {
+        "symbol": "DeviceConfig",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor"
+      },
+      {
+        "symbol": "RelayApi",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor"
+      },
+      {
+        "symbol": "SecureConfig",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "fact_id": "44ef29cc544ea9f4bfd2688ce71c4d25"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MainActivity.network",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MainActivity.createMonitor",
+        "fact_id": "9defcee1593726be10e26769b8294e7e"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Call-graph hotspot: android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline (fan-in 4, fan-out 10)",
+    "source": "hotspots",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline\" is a pinch point: 4 symbols call into it and it calls out to 10 others, so a large share of call chains pass through it (degree-centrality proxy for betweenness). Such chokepoints are high-risk to change and high-value to test.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "detail": "fan-in 4 × fan-out 10 = score 40",
+        "line": 48,
+        "fact_id": "d7328470244da0003541ec02bbbdb7a1"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "fact_id": "0da5ba0642e96f87e9b0f38b30cd22e0"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.onDestroy",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "fact_id": "65c9b4b964669e1fec7ef00fe8d5c9e6"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.onStartCommand",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "fact_id": "136938fcf7ef9b3ab3ab5be4e6859f1d"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "calls into android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      },
+      {
+        "symbol": "OFFLINE",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline"
+      },
+      {
+        "symbol": "UNOBSERVABLE",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline",
+        "fact_id": "44ef29cc544ea9f4bfd2688ce71c4d25"
+      },
+      {
+        "symbol": "cameras",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline"
+      },
+      {
+        "symbol": "copy",
+        "detail": "called by android/app/src/main/kotlin/vn/childsafe/app.MonitorService.markOffline"
+      }
+    ],
+    "suggested_actions": [
+      "Add focused tests around this chokepoint before refactoring",
+      "Consider decomposing it so call paths don't all funnel through one symbol",
+      "Verify it isn't doing orchestration that belongs in callers"
+    ]
+  },
+  {
+    "title": "Deep dependency chain: . (depth 9)",
+    "source": "dependency-depth",
+    "description": "Module \".\" has a longest dependency chain of 9 modules: . -\u003e src/childsafe/web -\u003e src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision. Deep chains slow comprehension and widen rebuild/retest impact when a module near the bottom changes.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "fact": "."
+      },
+      {
+        "fact": "src/childsafe/web",
+        "fact_id": "cc0d6e816e6ebb0b647be267991345a3"
+      },
+      {
+        "fact": "src/childsafe",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Flatten the chain by depending on shared abstractions instead of deep transitive modules",
+      "Check whether intermediate modules are pass-through layers that can be removed",
+      "Introduce interfaces to decouple the deepest modules from their consumers"
+    ]
+  },
+  {
+    "title": "Deep dependency chain: scripts (depth 9)",
+    "source": "dependency-depth",
+    "description": "Module \"scripts\" has a longest dependency chain of 9 modules: scripts -\u003e src/childsafe/web -\u003e src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision. Deep chains slow comprehension and widen rebuild/retest impact when a module near the bottom changes.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "fact": "scripts",
+        "fact_id": "a83ef63dcd186f918af032212d60d24e"
+      },
+      {
+        "fact": "src/childsafe/web",
+        "fact_id": "cc0d6e816e6ebb0b647be267991345a3"
+      },
+      {
+        "fact": "src/childsafe",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Flatten the chain by depending on shared abstractions instead of deep transitive modules",
+      "Check whether intermediate modules are pass-through layers that can be removed",
+      "Introduce interfaces to decouple the deepest modules from their consumers"
+    ]
+  },
+  {
+    "title": "Deep dependency chain: src (depth 8)",
+    "source": "dependency-depth",
+    "description": "Module \"src\" has a longest dependency chain of 8 modules: src -\u003e src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision. Deep chains slow comprehension and widen rebuild/retest impact when a module near the bottom changes.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "fact": "src"
+      },
+      {
+        "fact": "src/childsafe",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Flatten the chain by depending on shared abstractions instead of deep transitive modules",
+      "Check whether intermediate modules are pass-through layers that can be removed",
+      "Introduce interfaces to decouple the deepest modules from their consumers"
+    ]
+  },
+  {
+    "title": "Deep dependency chain: src/childsafe/web (depth 8)",
+    "source": "dependency-depth",
+    "description": "Module \"src/childsafe/web\" has a longest dependency chain of 8 modules: src/childsafe/web -\u003e src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision. Deep chains slow comprehension and widen rebuild/retest impact when a module near the bottom changes.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "fact": "src/childsafe/web",
+        "fact_id": "cc0d6e816e6ebb0b647be267991345a3"
+      },
+      {
+        "fact": "src/childsafe",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Flatten the chain by depending on shared abstractions instead of deep transitive modules",
+      "Check whether intermediate modules are pass-through layers that can be removed",
+      "Introduce interfaces to decouple the deepest modules from their consumers"
+    ]
+  },
+  {
+    "title": "Deep dependency chain: src/childsafe (depth 7)",
+    "source": "dependency-depth",
+    "description": "Module \"src/childsafe\" has a longest dependency chain of 7 modules: src/childsafe -\u003e src/childsafe/alerts -\u003e src/childsafe/classifier -\u003e src/childsafe/data -\u003e src/childsafe/evaluation -\u003e src/childsafe/runtime -\u003e src/childsafe/vision. Deep chains slow comprehension and widen rebuild/retest impact when a module near the bottom changes.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "fact": "src/childsafe",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      },
+      {
+        "fact": "src/childsafe/alerts",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      },
+      {
+        "fact": "src/childsafe/classifier",
+        "fact_id": "21b5084b37d0da5c0a2ec736af87b7ed"
+      },
+      {
+        "fact": "src/childsafe/data",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      },
+      {
+        "fact": "src/childsafe/evaluation",
+        "fact_id": "94494bfc297695731e0da00033e537e4"
+      },
+      {
+        "fact": "src/childsafe/runtime",
+        "fact_id": "45564215b9bc2491bd6a3a8b60d77dba"
+      },
+      {
+        "fact": "src/childsafe/vision",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Flatten the chain by depending on shared abstractions instead of deep transitive modules",
+      "Check whether intermediate modules are pass-through layers that can be removed",
+      "Introduce interfaces to decouple the deepest modules from their consumers"
+    ]
+  },
+  {
+    "title": "Large public surface: android/core/src/main/kotlin/vn/childsafe/core exports 53 of 58 symbols (91%)",
+    "source": "exported-surface",
+    "description": "Module \"android/core/src/main/kotlin/vn/childsafe/core\" exports 53 of its 58 symbols (91%). A large, near-fully-exported module hides little of its implementation, so consumers can couple to internals and it is hard to change without breaking them. Worth a visibility review — though a deliberate library API may legitimately export most of its surface.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box",
+        "detail": "exported",
+        "fact_id": "9cda9fc453c00d7769ca8a327ec8610a"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.around",
+        "detail": "exported",
+        "fact_id": "0e28b8b6e452849a5601598ad35c5c1b"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.clip",
+        "detail": "exported",
+        "fact_id": "3447d5b84e4f9f5b5164b7b143656117"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.contains",
+        "detail": "exported",
+        "fact_id": "6aa4b35908c9766fe5c0b1e3282a67f6"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.distance",
+        "detail": "exported",
+        "fact_id": "54ace3acef8aff39971f1432c463f298"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.intersection",
+        "detail": "exported",
+        "fact_id": "f62b12cb00e160d5edd733628c9a8553"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Box.iou",
+        "detail": "exported",
+        "fact_id": "fa0673798c9c214a8cd95f9d3a56ca66"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.CameraDecision",
+        "detail": "exported",
+        "fact_id": "eb21910a7e9c2abc3de3ef59ebe0cccc"
+      }
+    ],
+    "suggested_actions": [
+      "Unexport symbols that are only used within the module",
+      "Define a small, intentional public API and hide the rest",
+      "Split the module if it has several independent public responsibilities"
+    ]
+  },
+  {
+    "title": "Large public surface: src/childsafe/companion/relay exports 16 of 17 symbols (94%)",
+    "source": "exported-surface",
+    "description": "Module \"src/childsafe/companion/relay\" exports 16 of its 17 symbols (94%). A large, near-fully-exported module hides little of its implementation, so consumers can couple to internals and it is hard to change without breaking them. Worth a visibility review — though a deliberate library API may legitimately export most of its surface.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "symbol": "src/childsafe/companion/relay.Join",
+        "detail": "exported",
+        "fact_id": "ebd3c3d645f058cb1cb8387d244c6589"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore",
+        "detail": "exported",
+        "fact_id": "4e5c38d017439cc304906bb543ab4639"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.camera",
+        "detail": "exported",
+        "fact_id": "b717c3ddf1d45b8c92cf37918c2beb75"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.close",
+        "detail": "exported",
+        "fact_id": "6902a3a8b3911decae94e8f613b7b507"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.create_room",
+        "detail": "exported",
+        "fact_id": "b9fa2b969b994db57680756a1c7862cd"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.delete_room",
+        "detail": "exported",
+        "fact_id": "8bd3bbccd9960ef2fb44f2bc62e1114c"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.invite",
+        "detail": "exported",
+        "fact_id": "8133f8404916fcfab09f73baf6b93ab4"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.RelayStore.join",
+        "detail": "exported",
+        "fact_id": "f1a75b6cabd407e6d878f326c0467ff4"
+      }
+    ],
+    "suggested_actions": [
+      "Unexport symbols that are only used within the module",
+      "Define a small, intentional public API and hide the rest",
+      "Split the module if it has several independent public responsibilities"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/alerts/processor.AlertProcessor.step (206)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/alerts/processor.AlertProcessor.step\" has a cyclomatic complexity of 206 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/alerts/processor.py",
+        "symbol": "src/childsafe/alerts/processor.AlertProcessor.step",
+        "detail": "cyclomatic complexity 206 at line 130",
+        "line": 130,
+        "fact_id": "a8a57a8de489874b737b8650e9044b37"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/pipeline.FramePipeline.process (133)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/pipeline.FramePipeline.process\" has a cyclomatic complexity of 133 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/pipeline.py",
+        "symbol": "src/childsafe/pipeline.FramePipeline.process",
+        "detail": "cyclomatic complexity 133 at line 275",
+        "line": 275,
+        "fact_id": "851a14bd075b78c52948631fc09b3276"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process (69)",
+    "source": "complexity-outliers",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process\" has a cyclomatic complexity of 69 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "cyclomatic complexity 69 at line 248",
+        "line": 248,
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/evaluation/product_report.evaluate_session (60)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/evaluation/product_report.evaluate_session\" has a cyclomatic complexity of 60 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/product_report.py",
+        "symbol": "src/childsafe/evaluation/product_report.evaluate_session",
+        "detail": "cyclomatic complexity 60 at line 44",
+        "line": 44,
+        "fact_id": "bbf3978b39402bbfb2e4b454a30e9516"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: scripts/prepare_hazard_dataset.prepare (59)",
+    "source": "complexity-outliers",
+    "description": "\"scripts/prepare_hazard_dataset.prepare\" has a cyclomatic complexity of 59 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "scripts/prepare_hazard_dataset.py",
+        "symbol": "scripts/prepare_hazard_dataset.prepare",
+        "detail": "cyclomatic complexity 59 at line 21",
+        "line": 21,
+        "fact_id": "c86598d94cdea04c0e4197816de84158"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/evaluation/choking.choking_report (47)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/evaluation/choking.choking_report\" has a cyclomatic complexity of 47 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/choking.py",
+        "symbol": "src/childsafe/evaluation/choking.choking_report",
+        "detail": "cyclomatic complexity 47 at line 47",
+        "line": 47,
+        "fact_id": "dfd16f3cd983b6b960f1ad795297fda7"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: android/core/src/main/kotlin/vn/childsafe/core.update (44)",
+    "source": "complexity-outliers",
+    "description": "\"android/core/src/main/kotlin/vn/childsafe/core.update\" has a cyclomatic complexity of 44 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/VisionGeometry.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.update",
+        "detail": "cyclomatic complexity 44 at line 160",
+        "line": 160,
+        "fact_id": "040dec476a94561baf0e928e819d8826"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/pipeline.FramePipeline._zoom_detect (44)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/pipeline.FramePipeline._zoom_detect\" has a cyclomatic complexity of 44 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/pipeline.py",
+        "symbol": "src/childsafe/pipeline.FramePipeline._zoom_detect",
+        "detail": "cyclomatic complexity 44 at line 117",
+        "line": 117,
+        "fact_id": "208744845978796f86eb0860378b7f80"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: android/core/src/main/kotlin/vn/childsafe/core.CameraRiskGate.update (43)",
+    "source": "complexity-outliers",
+    "description": "\"android/core/src/main/kotlin/vn/childsafe/core.CameraRiskGate.update\" has a cyclomatic complexity of 43 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/CameraRiskGate.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.CameraRiskGate.update",
+        "detail": "cyclomatic complexity 43 at line 41",
+        "line": 41,
+        "fact_id": "c874640c27ade337ee9f8179f17de6ee"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/web/app.RuntimeDemo._publish_frame (39)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/web/app.RuntimeDemo._publish_frame\" has a cyclomatic complexity of 39 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/web/app.py",
+        "symbol": "src/childsafe/web/app.RuntimeDemo._publish_frame",
+        "detail": "cyclomatic complexity 39 at line 241",
+        "line": 241,
+        "fact_id": "778df7706660ed07d9597d9471fbf974"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: scripts/run_webcam.main (35)",
+    "source": "complexity-outliers",
+    "description": "\"scripts/run_webcam.main\" has a cyclomatic complexity of 35 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "scripts/run_webcam.py",
+        "symbol": "scripts/run_webcam.main",
+        "detail": "cyclomatic complexity 35 at line 60",
+        "line": 60,
+        "fact_id": "4b23610e664af43432ea081444ac57f2"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/runtime/multimodal.FeatureTimeline.window (34)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/runtime/multimodal.FeatureTimeline.window\" has a cyclomatic complexity of 34 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/runtime/multimodal.py",
+        "symbol": "src/childsafe/runtime/multimodal.FeatureTimeline.window",
+        "detail": "cyclomatic complexity 34 at line 120",
+        "line": 120,
+        "fact_id": "c9c64fb7c52acf0bcfd79be298413d40"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/vision/elevated.object_proximity (33)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/vision/elevated.object_proximity\" has a cyclomatic complexity of 33 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/elevated.py",
+        "symbol": "src/childsafe/vision/elevated.object_proximity",
+        "detail": "cyclomatic complexity 33 at line 167",
+        "line": 167,
+        "fact_id": "50e8129164b8ead6ccbac5151eb188e7"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: src/childsafe/vision/tracking.PersonTracker.update (33)",
+    "source": "complexity-outliers",
+    "description": "\"src/childsafe/vision/tracking.PersonTracker.update\" has a cyclomatic complexity of 33 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/tracking.py",
+        "symbol": "src/childsafe/vision/tracking.PersonTracker.update",
+        "detail": "cyclomatic complexity 33 at line 89",
+        "line": 89,
+        "fact_id": "ff3070939124db5ee7062c38fe4e089d"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "High cyclomatic complexity: android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks (32)",
+    "source": "complexity-outliers",
+    "description": "\"android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks\" has a cyclomatic complexity of 32 — well above the repo average. Highly branched functions are hard to test fully and are frequent defect sites.",
+    "confidence": 0.7,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks",
+        "detail": "cyclomatic complexity 32 at line 142",
+        "line": 142,
+        "fact_id": "9446454588cd6cb09c6a233daa39e97f"
+      }
+    ],
+    "suggested_actions": [
+      "Extract guard clauses and nested branches into helper functions",
+      "Replace deep conditionals with table/strategy dispatch where possible",
+      "Add tests covering the distinct branches before refactoring"
+    ]
+  },
+  {
+    "title": "Off main sequence: src/childsafe/alerts (D=0.80)",
+    "source": "package-metrics",
+    "description": "Package \"src/childsafe/alerts\" sits 0.80 from the main sequence (I=0.20, A=0.00) — rigid (zone of pain: stable + concrete — many packages depend on it, so it is hard to change without editing dependents).",
+    "confidence": 0.7000000000000001,
+    "evidence": [
+      {
+        "fact": "src/childsafe/alerts",
+        "detail": "Ca=4 Ce=1 N=7 I=0.20 A=0.00 D=0.80",
+        "fact_id": "290d47a3a373da1d5d945859256578c0"
+      }
+    ],
+    "suggested_actions": [
+      "Stable hub: keep its public contract small, cohesive and stable; split it if it spans multiple responsibilities. (Abstractness is only an approximation for dynamically-typed languages, so \"extract interfaces\" may not apply.)"
+    ]
+  },
+  {
+    "title": "Off main sequence: src/childsafe/data (D=0.75)",
+    "source": "package-metrics",
+    "description": "Package \"src/childsafe/data\" sits 0.75 from the main sequence (I=0.25, A=0.00) — rigid (zone of pain: stable + concrete — many packages depend on it, so it is hard to change without editing dependents).",
+    "confidence": 0.65,
+    "evidence": [
+      {
+        "fact": "src/childsafe/data",
+        "detail": "Ca=3 Ce=1 N=4 I=0.25 A=0.00 D=0.75",
+        "fact_id": "29b46dde60d50c4db4c48b8cf91131e0"
+      }
+    ],
+    "suggested_actions": [
+      "Stable hub: keep its public contract small, cohesive and stable; split it if it spans multiple responsibilities. (Abstractness is only an approximation for dynamically-typed languages, so \"extract interfaces\" may not apply.)"
+    ]
+  },
+  {
+    "title": "Off main sequence: src/childsafe/vision (D=0.71)",
+    "source": "package-metrics",
+    "description": "Package \"src/childsafe/vision\" sits 0.71 from the main sequence (I=0.29, A=0.00) — rigid (zone of pain: stable + concrete — many packages depend on it, so it is hard to change without editing dependents).",
+    "confidence": 0.614,
+    "evidence": [
+      {
+        "fact": "src/childsafe/vision",
+        "detail": "Ca=5 Ce=2 N=16 I=0.29 A=0.00 D=0.71",
+        "fact_id": "1b0a0ed74d05f0581f19e79beb3911fd"
+      }
+    ],
+    "suggested_actions": [
+      "Stable hub: keep its public contract small, cohesive and stable; split it if it spans multiple responsibilities. (Abstractness is only an approximation for dynamically-typed languages, so \"extract interfaces\" may not apply.)"
+    ]
+  },
+  {
+    "title": "Most depended-upon package: src/childsafe (Ca=5)",
+    "source": "package-metrics",
+    "description": "\"src/childsafe\" is depended upon by 5 other packages — a change-risk concentrator. Edits ripple across dependents, so keep its public contract stable.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "fact": "src/childsafe",
+        "detail": "Ca=5 I=0.44",
+        "fact_id": "ba7de7a12613999cfbd4203142019b77"
+      }
+    ],
+    "suggested_actions": [
+      "Stabilize the package's public contract; split it if it spans multiple responsibilities"
+    ]
+  },
+  {
+    "title": "Dead code candidate: function src/childsafe/classifier/models.unsafe_mask",
+    "source": "dead-code",
+    "description": "function \"src/childsafe/classifier/models.unsafe_mask\" is isolated — nothing in the snapshot graph references it (high confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/classifier/models.py",
+        "symbol": "src/childsafe/classifier/models.unsafe_mask",
+        "detail": "function · isolated · src/childsafe/classifier/models.py:39",
+        "line": 39,
+        "fact_id": "227e61b4ca805f6992e127ad73ced293"
+      },
+      {
+        "symbol": "src/childsafe/classifier/models.unsafe_mask",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "227e61b4ca805f6992e127ad73ced293"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: function src/childsafe/vision/geometry.normalized_distance",
+    "source": "dead-code",
+    "description": "function \"src/childsafe/vision/geometry.normalized_distance\" is isolated — nothing in the snapshot graph references it (high confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/geometry.py",
+        "symbol": "src/childsafe/vision/geometry.normalized_distance",
+        "detail": "function · isolated · src/childsafe/vision/geometry.py:86",
+        "line": 86,
+        "fact_id": "581fd71955f789d35520591430eab2fa"
+      },
+      {
+        "symbol": "src/childsafe/vision/geometry.normalized_distance",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "581fd71955f789d35520591430eab2fa"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class android/core/src/main/kotlin/vn/childsafe/core.Connection",
+    "source": "dead-code",
+    "description": "class \"android/core/src/main/kotlin/vn/childsafe/core.Connection\" is isolated — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Connection",
+        "detail": "class · isolated · android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt:5",
+        "line": 5,
+        "fact_id": "f290460686837655b07d15ec2d60285e"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Connection",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "f290460686837655b07d15ec2d60285e"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class android/core/src/main/kotlin/vn/childsafe/core.Observation",
+    "source": "dead-code",
+    "description": "class \"android/core/src/main/kotlin/vn/childsafe/core.Observation\" is isolated — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Observation",
+        "detail": "class · isolated · android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt:4",
+        "line": 4,
+        "fact_id": "f60c4a58896fc999d6c79a1fed24bad3"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Observation",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "f60c4a58896fc999d6c79a1fed24bad3"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class android/core/src/main/kotlin/vn/childsafe/core.Risk",
+    "source": "dead-code",
+    "description": "class \"android/core/src/main/kotlin/vn/childsafe/core.Risk\" is isolated — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Risk",
+        "detail": "class · isolated · android/core/src/main/kotlin/vn/childsafe/core/MonitorState.kt:3",
+        "line": 3,
+        "fact_id": "abcd4ebcf76afa04079cda72873f1f93"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.Risk",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "abcd4ebcf76afa04079cda72873f1f93"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class src/childsafe/runtime/multimodal.SignalFeatures",
+    "source": "dead-code",
+    "description": "class \"src/childsafe/runtime/multimodal.SignalFeatures\" is isolated — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/runtime/multimodal.py",
+        "symbol": "src/childsafe/runtime/multimodal.SignalFeatures",
+        "detail": "class · isolated · src/childsafe/runtime/multimodal.py:13",
+        "line": 13,
+        "fact_id": "cb684392b12351e573084840ae037d36"
+      },
+      {
+        "symbol": "src/childsafe/runtime/multimodal.SignalFeatures",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "cb684392b12351e573084840ae037d36"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class android/app/src/main/kotlin/vn/childsafe/app.CameraData",
+    "source": "dead-code",
+    "description": "class \"android/app/src/main/kotlin/vn/childsafe/app.CameraData\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/CameraNodeService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraData",
+        "detail": "class · unreferenced · android/app/src/main/kotlin/vn/childsafe/app/CameraNodeService.kt:30",
+        "line": 30,
+        "fact_id": "b1669bfa537eee94bf84e193942b6b93"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.CameraData",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "b1669bfa537eee94bf84e193942b6b93"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class android/app/src/main/kotlin/vn/childsafe/app.MonitorData",
+    "source": "dead-code",
+    "description": "class \"android/app/src/main/kotlin/vn/childsafe/app.MonitorData\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorData",
+        "detail": "class · unreferenced · android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt:18",
+        "line": 18,
+        "fact_id": "27606ea926b1b7bd633b1fe426aa81fb"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorData",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "27606ea926b1b7bd633b1fe426aa81fb"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class services/notify/app.Alert",
+    "source": "dead-code",
+    "description": "class \"services/notify/app.Alert\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "services/notify/app.py",
+        "symbol": "services/notify/app.Alert",
+        "detail": "class · unreferenced · services/notify/app.py:46",
+        "line": 46,
+        "fact_id": "10ebbfd4c41aa97f37531f8f0698d7f0"
+      },
+      {
+        "symbol": "services/notify/app.Alert",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "10ebbfd4c41aa97f37531f8f0698d7f0"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class services/notify/app.Code",
+    "source": "dead-code",
+    "description": "class \"services/notify/app.Code\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "services/notify/app.py",
+        "symbol": "services/notify/app.Code",
+        "detail": "class · unreferenced · services/notify/app.py:42",
+        "line": 42,
+        "fact_id": "d3fc0a0604f80578f6dd0eb44e9e38e7"
+      },
+      {
+        "symbol": "services/notify/app.Code",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "d3fc0a0604f80578f6dd0eb44e9e38e7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class services/notify/app.Restore",
+    "source": "dead-code",
+    "description": "class \"services/notify/app.Restore\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "services/notify/app.py",
+        "symbol": "services/notify/app.Restore",
+        "detail": "class · unreferenced · services/notify/app.py:52",
+        "line": 52,
+        "fact_id": "79be710c2ff76d20cd121930a92d2577"
+      },
+      {
+        "symbol": "services/notify/app.Restore",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "79be710c2ff76d20cd121930a92d2577"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class services/notify/app.Subscribe",
+    "source": "dead-code",
+    "description": "class \"services/notify/app.Subscribe\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "services/notify/app.py",
+        "symbol": "services/notify/app.Subscribe",
+        "detail": "class · unreferenced · services/notify/app.py:37",
+        "line": 37,
+        "fact_id": "b2576e02553bf9b4ae945825b44c4558"
+      },
+      {
+        "symbol": "services/notify/app.Subscribe",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "b2576e02553bf9b4ae945825b44c4558"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class src/childsafe/companion/relay.Join",
+    "source": "dead-code",
+    "description": "class \"src/childsafe/companion/relay.Join\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/companion/relay.py",
+        "symbol": "src/childsafe/companion/relay.Join",
+        "detail": "class · unreferenced · src/childsafe/companion/relay.py:179",
+        "line": 179,
+        "fact_id": "ebd3c3d645f058cb1cb8387d244c6589"
+      },
+      {
+        "symbol": "src/childsafe/companion/relay.Join",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "ebd3c3d645f058cb1cb8387d244c6589"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class src/childsafe/runtime/contracts.FeatureRow",
+    "source": "dead-code",
+    "description": "class \"src/childsafe/runtime/contracts.FeatureRow\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/runtime/contracts.py",
+        "symbol": "src/childsafe/runtime/contracts.FeatureRow",
+        "detail": "class · unreferenced · src/childsafe/runtime/contracts.py:12",
+        "line": 12,
+        "fact_id": "f8a9ac5a50415356bfd642dc87e81402"
+      },
+      {
+        "symbol": "src/childsafe/runtime/contracts.FeatureRow",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "f8a9ac5a50415356bfd642dc87e81402"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class src/childsafe/web/label_tool.Capture",
+    "source": "dead-code",
+    "description": "class \"src/childsafe/web/label_tool.Capture\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/web/label_tool.py",
+        "symbol": "src/childsafe/web/label_tool.Capture",
+        "detail": "class · unreferenced · src/childsafe/web/label_tool.py:48",
+        "line": 48,
+        "fact_id": "4953fba14918a6a566da90b6728bb1a4"
+      },
+      {
+        "symbol": "src/childsafe/web/label_tool.Capture",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "4953fba14918a6a566da90b6728bb1a4"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Dead code candidate: class src/childsafe/web/label_tool.Review",
+    "source": "dead-code",
+    "description": "class \"src/childsafe/web/label_tool.Review\" is unreferenced — nothing in the snapshot graph references it (medium confidence). References are matched by short name and biased conservative, so verify against dynamic/reflective dispatch and consumers outside the snapshot before removing.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/web/label_tool.py",
+        "symbol": "src/childsafe/web/label_tool.Review",
+        "detail": "class · unreferenced · src/childsafe/web/label_tool.py:57",
+        "line": 57,
+        "fact_id": "4ebdc3232ef497a6a45b28b3aaa29673"
+      },
+      {
+        "symbol": "src/childsafe/web/label_tool.Review",
+        "detail": "exported — may be used outside this snapshot; verify before removal",
+        "fact_id": "4ebdc3232ef497a6a45b28b3aaa29673"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm no dynamic/reflective or out-of-snapshot callers, then remove the symbol"
+    ]
+  },
+  {
+    "title": "Additional dead-code candidates: 354 more (see find_orphans)",
+    "source": "dead-code",
+    "description": "0 further high/medium-confidence orphan(s) were omitted from individual insights and 354 low-confidence orphan(s) (methods/types/consts/vars — usage not edge-tracked) were not surfaced individually. Use the find_orphans tool (output_mode=full) for the complete list.",
+    "confidence": 0.4,
+    "evidence": null,
+    "suggested_actions": [
+      "Run find_orphans with confidence=high and visibility=unexported for the safest cleanup set"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n³)): src/childsafe/evaluation/session_reports.build_report",
+    "source": "performance",
+    "description": "Calls childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/session_reports.py",
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "Calls childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 62,
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "call_in_loop=childsafe.evaluation.sessions.file_hash",
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n^5)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.resolveHands",
+    "source": "performance",
+    "description": "Loops nest 5 deep, so the body runs about O(n^5) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.5,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.resolveHands",
+        "detail": "Loops nest 5 deep, so the body runs about O(n^5) in the loop bounds.",
+        "line": 342,
+        "fact_id": "562ce0e2d18772a5aa05bb94ecfd12a0"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.resolveHands",
+        "detail": "loop_depth=5, loop_count=12, cyclomatic=24",
+        "fact_id": "562ce0e2d18772a5aa05bb94ecfd12a0"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n³)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+    "source": "performance",
+    "description": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds.",
+        "line": 248,
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "loop_depth=3, loop_count=18, cyclomatic=69",
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n³)): src/childsafe/evaluation/report.recording_report",
+    "source": "performance",
+    "description": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/report.py",
+        "symbol": "src/childsafe/evaluation/report.recording_report",
+        "detail": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds.",
+        "line": 9,
+        "fact_id": "954b770acd30de3e2a0cbb3ed2594d41"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/report.recording_report",
+        "detail": "loop_depth=3, loop_count=7, cyclomatic=22",
+        "fact_id": "954b770acd30de3e2a0cbb3ed2594d41"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n³)): src/childsafe/pipeline.FramePipeline._zoom_detect",
+    "source": "performance",
+    "description": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/pipeline.py",
+        "symbol": "src/childsafe/pipeline.FramePipeline._zoom_detect",
+        "detail": "Loops nest 3 deep, so the body runs about O(n³) in the loop bounds.",
+        "line": 117,
+        "fact_id": "208744845978796f86eb0860378b7f80"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline._zoom_detect",
+        "detail": "loop_depth=3, loop_count=9, cyclomatic=44",
+        "fact_id": "208744845978796f86eb0860378b7f80"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n³+)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+    "source": "performance",
+    "description": "Calls h.gate.update, people.getValue(id).gate.update inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.5,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "Calls h.gate.update, people.getValue(id).gate.update inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 248,
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "call_in_loop=h.gate.update",
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "call_in_loop=people.getValue(id).gate.update",
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n^4)): android/core/src/main/kotlin/vn/childsafe/core.VisibleMask.dominantFraction",
+    "source": "performance",
+    "description": "Loops nest 4 deep, so the body runs about O(n^4) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.5,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/VisionGeometry.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.VisibleMask.dominantFraction",
+        "detail": "Loops nest 4 deep, so the body runs about O(n^4) in the loop bounds.",
+        "line": 73,
+        "fact_id": "49a28e91766728df25c5c321246192cd"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.VisibleMask.dominantFraction",
+        "detail": "loop_depth=4, loop_count=4, cyclomatic=12",
+        "fact_id": "49a28e91766728df25c5c321246192cd"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n^4)): src/childsafe/vision/tracking.resolve_hands",
+    "source": "performance",
+    "description": "Loops nest 4 deep, so the body runs about O(n^4) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.5,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/tracking.py",
+        "symbol": "src/childsafe/vision/tracking.resolve_hands",
+        "detail": "Loops nest 4 deep, so the body runs about O(n^4) in the loop bounds.",
+        "line": 142,
+        "fact_id": "c2f0b03c5a4ae65d8c936997f3348e97"
+      },
+      {
+        "symbol": "src/childsafe/vision/tracking.resolve_hands",
+        "detail": "loop_depth=4, loop_count=12, cyclomatic=29",
+        "fact_id": "c2f0b03c5a4ae65d8c936997f3348e97"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 99,
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.connectionNotice (loop_depth=1)",
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): src/childsafe/classifier/evaluate.main",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "src/childsafe/classifier/evaluate.py",
+        "symbol": "src/childsafe/classifier/evaluate.main",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 85,
+        "fact_id": "922145bd30c823f7785e38d9062c8edd"
+      },
+      {
+        "symbol": "src/childsafe/classifier/evaluate.main",
+        "detail": "src/childsafe/classifier/evaluate._eval_df (loop_depth=1)",
+        "fact_id": "922145bd30c823f7785e38d9062c8edd"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): src/childsafe/data/catalog.build_full_catalog",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "src/childsafe/data/catalog.py",
+        "symbol": "src/childsafe/data/catalog.build_full_catalog",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 61,
+        "fact_id": "4741443868e110399c7dd11b26a60c22"
+      },
+      {
+        "symbol": "src/childsafe/data/catalog.build_full_catalog",
+        "detail": "src/childsafe/data/catalog.source_roots (loop_depth=1)",
+        "fact_id": "4741443868e110399c7dd11b26a60c22"
+      },
+      {
+        "symbol": "src/childsafe/data/catalog.build_full_catalog",
+        "detail": "src/childsafe/data/catalog.build_catalog (loop_depth=1)",
+        "fact_id": "4741443868e110399c7dd11b26a60c22"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): src/childsafe/evaluation/choking.choking_report",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/choking.py",
+        "symbol": "src/childsafe/evaluation/choking.choking_report",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 47,
+        "fact_id": "dfd16f3cd983b6b960f1ad795297fda7"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/choking.choking_report",
+        "detail": "src/childsafe/evaluation/choking._summarize (loop_depth=1)",
+        "fact_id": "dfd16f3cd983b6b960f1ad795297fda7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): src/childsafe/evaluation/session_reports.build_report",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/session_reports.py",
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 62,
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "src/childsafe/evaluation/session_reports.replay_config (loop_depth=1)",
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³)): src/childsafe/web/app.RuntimeDemo._publish_frame",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³). Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.55,
+    "evidence": [
+      {
+        "file": "src/childsafe/web/app.py",
+        "symbol": "src/childsafe/web/app.RuntimeDemo._publish_frame",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to about O(n³).",
+        "line": 241,
+        "fact_id": "778df7706660ed07d9597d9471fbf974"
+      },
+      {
+        "symbol": "src/childsafe/web/app.RuntimeDemo._publish_frame",
+        "detail": "src/childsafe/web/app._held_box (loop_depth=1)",
+        "fact_id": "778df7706660ed07d9597d9471fbf974"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/alerts/event_log.EventLogger.close",
+    "source": "performance",
+    "description": "Calls src/childsafe/alerts/event_log.EventLogger._flush inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/alerts/event_log.py",
+        "symbol": "src/childsafe/alerts/event_log.EventLogger.close",
+        "detail": "Calls src/childsafe/alerts/event_log.EventLogger._flush inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 52,
+        "fact_id": "a57668681c11d04b3ca27bf941f4d6ef"
+      },
+      {
+        "symbol": "src/childsafe/alerts/event_log.EventLogger.close",
+        "detail": "call_in_loop=src/childsafe/alerts/event_log.EventLogger._flush",
+        "fact_id": "a57668681c11d04b3ca27bf941f4d6ef"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/alerts/event_log.EventLogger.update",
+    "source": "performance",
+    "description": "Calls src/childsafe/alerts/event_log.EventLogger.update inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/alerts/event_log.py",
+        "symbol": "src/childsafe/alerts/event_log.EventLogger.update",
+        "detail": "Calls src/childsafe/alerts/event_log.EventLogger.update inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 23,
+        "fact_id": "1024c369390dff26b65e1beb143877fd"
+      },
+      {
+        "symbol": "src/childsafe/alerts/event_log.EventLogger.update",
+        "detail": "call_in_loop=src/childsafe/alerts/event_log.EventLogger.update",
+        "fact_id": "1024c369390dff26b65e1beb143877fd"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/notify.PhoneNotifier._keepalive",
+    "source": "performance",
+    "description": "Calls src/childsafe/notify.PhoneNotifier.refresh inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/notify.py",
+        "symbol": "src/childsafe/notify.PhoneNotifier._keepalive",
+        "detail": "Calls src/childsafe/notify.PhoneNotifier.refresh inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 127,
+        "fact_id": "1e7d08f9f49e22de59b01da590e71130"
+      },
+      {
+        "symbol": "src/childsafe/notify.PhoneNotifier._keepalive",
+        "detail": "call_in_loop=src/childsafe/notify.PhoneNotifier.refresh",
+        "fact_id": "1e7d08f9f49e22de59b01da590e71130"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/notify.PhoneNotifier._sender",
+    "source": "performance",
+    "description": "Calls src/childsafe/notify.PhoneNotifier._request, src/childsafe/notify.PhoneNotifier._sync inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/notify.py",
+        "symbol": "src/childsafe/notify.PhoneNotifier._sender",
+        "detail": "Calls src/childsafe/notify.PhoneNotifier._request, src/childsafe/notify.PhoneNotifier._sync inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 81,
+        "fact_id": "e29e0858f24df100d8016b9ea12e7f03"
+      },
+      {
+        "symbol": "src/childsafe/notify.PhoneNotifier._sender",
+        "detail": "call_in_loop=src/childsafe/notify.PhoneNotifier._request",
+        "fact_id": "e29e0858f24df100d8016b9ea12e7f03"
+      },
+      {
+        "symbol": "src/childsafe/notify.PhoneNotifier._sender",
+        "detail": "call_in_loop=src/childsafe/notify.PhoneNotifier._sync",
+        "fact_id": "e29e0858f24df100d8016b9ea12e7f03"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/runtime/readiness.demo_readiness",
+    "source": "performance",
+    "description": "Calls childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.9,
+    "evidence": [
+      {
+        "file": "src/childsafe/runtime/readiness.py",
+        "symbol": "src/childsafe/runtime/readiness.demo_readiness",
+        "detail": "Calls childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 10,
+        "fact_id": "de85bfe7abd2ee6fc8b149abf25d9d85"
+      },
+      {
+        "symbol": "src/childsafe/runtime/readiness.demo_readiness",
+        "detail": "call_in_loop=childsafe.evaluation.sessions.file_hash",
+        "fact_id": "de85bfe7abd2ee6fc8b149abf25d9d85"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): android/app/src/main/kotlin/vn/childsafe/app.RelayApi.call",
+    "source": "performance",
+    "description": "Calls stream.read inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/RelayApi.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.RelayApi.call",
+        "detail": "Calls stream.read inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 42,
+        "fact_id": "b25d1d7c7418b99474ac76f1162a84cc"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.RelayApi.call",
+        "detail": "call_in_loop=stream.read",
+        "fact_id": "b25d1d7c7418b99474ac76f1162a84cc"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (call-in-loop, O(n)): src/childsafe/evaluation/session_reports.load_records",
+    "source": "performance",
+    "description": "Calls childsafe.config.load_config, childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.6,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/session_reports.py",
+        "symbol": "src/childsafe/evaluation/session_reports.load_records",
+        "detail": "Calls childsafe.config.load_config, childsafe.evaluation.sessions.file_hash inside a loop — a likely N+1 / per-iteration I/O pattern; batch or hoist out of the loop.",
+        "line": 25,
+        "fact_id": "3e25048fdb038491d99b728894522eb6"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.load_records",
+        "detail": "call_in_loop=childsafe.config.load_config",
+        "fact_id": "3e25048fdb038491d99b728894522eb6"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.load_records",
+        "detail": "call_in_loop=childsafe.evaluation.sessions.file_hash",
+        "fact_id": "3e25048fdb038491d99b728894522eb6"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (compounded, O(n³+)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+    "source": "performance",
+    "description": "Loops here call other looping functions; worst-case nesting compounds across the call graph to O(n³+) — a deep structural estimate, verify before acting. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.5,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "Loops here call other looping functions; worst-case nesting compounds across the call graph to O(n³+) — a deep structural estimate, verify before acting.",
+        "line": 248,
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks (loop_depth=2)",
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.process",
+        "detail": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.classify (loop_depth=1)",
+        "fact_id": "ffd829e461d2ad77472f91729bdcabe7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/MonitorService.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 99,
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.MonitorService.runMonitor",
+        "detail": "loop_depth=2, loop_count=4, cyclomatic=28",
+        "fact_id": "d3b6f3132cddb00261c110daa84dc081"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.imageQuality",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.imageQuality",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 189,
+        "fact_id": "0bedca56d2641b695fea515dbf41f58c"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.imageQuality",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=5",
+        "fact_id": "0bedca56d2641b695fea515dbf41f58c"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 142,
+        "fact_id": "9446454588cd6cb09c6a233daa39e97f"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.landmarks",
+        "detail": "loop_depth=2, loop_count=11, cyclomatic=32",
+        "fact_id": "9446454588cd6cb09c6a233daa39e97f"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/app/src/main/kotlin/vn/childsafe/app.NativeVision.selfCheck",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/NativeVision.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.selfCheck",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 367,
+        "fact_id": "3e364ba362c1923c2e1cb009c6f6120c"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.NativeVision.selfCheck",
+        "detail": "loop_depth=2, loop_count=5, cyclomatic=8",
+        "fact_id": "3e364ba362c1923c2e1cb009c6f6120c"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/app/src/main/kotlin/vn/childsafe/app.PairScanActivity.onCreate",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/app/src/main/kotlin/vn/childsafe/app/PairScanActivity.kt",
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.PairScanActivity.onCreate",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 24,
+        "fact_id": "0ff6249c80a1a9e879d3b6f8bcec7bcd"
+      },
+      {
+        "symbol": "android/app/src/main/kotlin/vn/childsafe/app.PairScanActivity.onCreate",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=10",
+        "fact_id": "0ff6249c80a1a9e879d3b6f8bcec7bcd"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/core/src/main/kotlin/vn/childsafe/core.decodeYolo",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/VisionGeometry.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.decodeYolo",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 37,
+        "fact_id": "2cbb70e6dbf41f056ba4393108a5be75"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.decodeYolo",
+        "detail": "loop_depth=2, loop_count=5, cyclomatic=20",
+        "fact_id": "2cbb70e6dbf41f056ba4393108a5be75"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/core/src/main/kotlin/vn/childsafe/core.half",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/VisionGeometry.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.half",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 139,
+        "fact_id": "238509e2918ed3e5024004f09cb18ed4"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.half",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=4",
+        "fact_id": "238509e2918ed3e5024004f09cb18ed4"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): android/core/src/main/kotlin/vn/childsafe/core.update",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "android/core/src/main/kotlin/vn/childsafe/core/VisionGeometry.kt",
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.update",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 160,
+        "fact_id": "040dec476a94561baf0e928e819d8826"
+      },
+      {
+        "symbol": "android/core/src/main/kotlin/vn/childsafe/core.update",
+        "detail": "loop_depth=2, loop_count=20, cyclomatic=44",
+        "fact_id": "040dec476a94561baf0e928e819d8826"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/alerts/processor.Components.from_off",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/alerts/processor.py",
+        "symbol": "src/childsafe/alerts/processor.Components.from_off",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 37,
+        "fact_id": "6046e1e06b3a29d8d4ef976b83c01e63"
+      },
+      {
+        "symbol": "src/childsafe/alerts/processor.Components.from_off",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=5",
+        "fact_id": "6046e1e06b3a29d8d4ef976b83c01e63"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/classifier/evaluate._plot_curves",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/classifier/evaluate.py",
+        "symbol": "src/childsafe/classifier/evaluate._plot_curves",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 148,
+        "fact_id": "e9ddcdf3eacd92a136432b555b178e24"
+      },
+      {
+        "symbol": "src/childsafe/classifier/evaluate._plot_curves",
+        "detail": "loop_depth=2, loop_count=5, cyclomatic=6",
+        "fact_id": "e9ddcdf3eacd92a136432b555b178e24"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/classifier/evaluate.main",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/classifier/evaluate.py",
+        "symbol": "src/childsafe/classifier/evaluate.main",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 85,
+        "fact_id": "922145bd30c823f7785e38d9062c8edd"
+      },
+      {
+        "symbol": "src/childsafe/classifier/evaluate.main",
+        "detail": "loop_depth=2, loop_count=6, cyclomatic=14",
+        "fact_id": "922145bd30c823f7785e38d9062c8edd"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/classifier/train.main",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/classifier/train.py",
+        "symbol": "src/childsafe/classifier/train.main",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 44,
+        "fact_id": "7d9e577877316b1584b11709ec92929b"
+      },
+      {
+        "symbol": "src/childsafe/classifier/train.main",
+        "detail": "loop_depth=2, loop_count=4, cyclomatic=28",
+        "fact_id": "7d9e577877316b1584b11709ec92929b"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/data/audio_labels.audit_coughvid_metadata",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/data/audio_labels.py",
+        "symbol": "src/childsafe/data/audio_labels.audit_coughvid_metadata",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 18,
+        "fact_id": "770cc388bf38a03e30ab7f5e6fb37213"
+      },
+      {
+        "symbol": "src/childsafe/data/audio_labels.audit_coughvid_metadata",
+        "detail": "loop_depth=2, loop_count=7, cyclomatic=28",
+        "fact_id": "770cc388bf38a03e30ab7f5e6fb37213"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/data/dedup.compute_hashes",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/data/dedup.py",
+        "symbol": "src/childsafe/data/dedup.compute_hashes",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 39,
+        "fact_id": "eebc9dd8dcd47f522f56ddb84ebd8275"
+      },
+      {
+        "symbol": "src/childsafe/data/dedup.compute_hashes",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=7",
+        "fact_id": "eebc9dd8dcd47f522f56ddb84ebd8275"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/data/dedup.find_duplicate_pairs",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/data/dedup.py",
+        "symbol": "src/childsafe/data/dedup.find_duplicate_pairs",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 76,
+        "fact_id": "3efc477043a910b3ae4fbec8a46230af"
+      },
+      {
+        "symbol": "src/childsafe/data/dedup.find_duplicate_pairs",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=4",
+        "fact_id": "3efc477043a910b3ae4fbec8a46230af"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/choking.choking_report",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/choking.py",
+        "symbol": "src/childsafe/evaluation/choking.choking_report",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 47,
+        "fact_id": "dfd16f3cd983b6b960f1ad795297fda7"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/choking.choking_report",
+        "detail": "loop_depth=2, loop_count=12, cyclomatic=47",
+        "fact_id": "dfd16f3cd983b6b960f1ad795297fda7"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/coverage.observation_metrics",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/coverage.py",
+        "symbol": "src/childsafe/evaluation/coverage.observation_metrics",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 6,
+        "fact_id": "bfe021c700171c76ecf28854f259485f"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/coverage.observation_metrics",
+        "detail": "loop_depth=2, loop_count=3, cyclomatic=13",
+        "fact_id": "bfe021c700171c76ecf28854f259485f"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/events.event_metrics",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/events.py",
+        "symbol": "src/childsafe/evaluation/events.event_metrics",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 32,
+        "fact_id": "355cb6ad4eb7034236515c0f6ffb5ce0"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/events.event_metrics",
+        "detail": "loop_depth=2, loop_count=6, cyclomatic=19",
+        "fact_id": "355cb6ad4eb7034236515c0f6ffb5ce0"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/product_report.evaluate_session",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/product_report.py",
+        "symbol": "src/childsafe/evaluation/product_report.evaluate_session",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 44,
+        "fact_id": "bbf3978b39402bbfb2e4b454a30e9516"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/product_report.evaluate_session",
+        "detail": "loop_depth=2, loop_count=7, cyclomatic=60",
+        "fact_id": "bbf3978b39402bbfb2e4b454a30e9516"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/product_report.pool_reports",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/product_report.py",
+        "symbol": "src/childsafe/evaluation/product_report.pool_reports",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 15,
+        "fact_id": "4269337b95e052470eebcb26b8d20af4"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/product_report.pool_reports",
+        "detail": "loop_depth=2, loop_count=4, cyclomatic=5",
+        "fact_id": "4269337b95e052470eebcb26b8d20af4"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/replay.replay",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/replay.py",
+        "symbol": "src/childsafe/evaluation/replay.replay",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 12,
+        "fact_id": "07c8f4b5738d0f707095f5960d1d4d33"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/replay.replay",
+        "detail": "loop_depth=2, loop_count=3, cyclomatic=15",
+        "fact_id": "07c8f4b5738d0f707095f5960d1d4d33"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/session_reports.build_report",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/session_reports.py",
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 62,
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.build_report",
+        "detail": "loop_depth=2, loop_count=5, cyclomatic=6",
+        "fact_id": "fe65f4a3d33867e0b63a978713b346a3"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/session_reports.tune",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/session_reports.py",
+        "symbol": "src/childsafe/evaluation/session_reports.tune",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 88,
+        "fact_id": "b9dfb95654880749ed5b1ae75c307010"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/session_reports.tune",
+        "detail": "loop_depth=2, loop_count=6, cyclomatic=16",
+        "fact_id": "b9dfb95654880749ed5b1ae75c307010"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/evaluation/sessions.validate_sessions",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/evaluation/sessions.py",
+        "symbol": "src/childsafe/evaluation/sessions.validate_sessions",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 28,
+        "fact_id": "225fc92d4a0714a8804f9b9043675ecb"
+      },
+      {
+        "symbol": "src/childsafe/evaluation/sessions.validate_sessions",
+        "detail": "loop_depth=2, loop_count=3, cyclomatic=16",
+        "fact_id": "225fc92d4a0714a8804f9b9043675ecb"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/pipeline.FramePipeline.process",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/pipeline.py",
+        "symbol": "src/childsafe/pipeline.FramePipeline.process",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 275,
+        "fact_id": "851a14bd075b78c52948631fc09b3276"
+      },
+      {
+        "symbol": "src/childsafe/pipeline.FramePipeline.process",
+        "detail": "loop_depth=2, loop_count=34, cyclomatic=133",
+        "fact_id": "851a14bd075b78c52948631fc09b3276"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/runtime/source.VideoSource._run",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/runtime/source.py",
+        "symbol": "src/childsafe/runtime/source.VideoSource._run",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 60,
+        "fact_id": "5da8ebcf533e0a1de4f245e442c0a03b"
+      },
+      {
+        "symbol": "src/childsafe/runtime/source.VideoSource._run",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=8",
+        "fact_id": "5da8ebcf533e0a1de4f245e442c0a03b"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/vision/detection.SupplementalDetector.detect_roi",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/detection.py",
+        "symbol": "src/childsafe/vision/detection.SupplementalDetector.detect_roi",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 170,
+        "fact_id": "adccd6b5676b3ed8342a050a6b347398"
+      },
+      {
+        "symbol": "src/childsafe/vision/detection.SupplementalDetector.detect_roi",
+        "detail": "loop_depth=2, loop_count=3, cyclomatic=5",
+        "fact_id": "adccd6b5676b3ed8342a050a6b347398"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Performance risk (nested-loop, O(n²)): src/childsafe/vision/landmarks.LandmarkDetector._hand_result",
+    "source": "performance",
+    "description": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds. Big-O is a deterministic estimate of structural worst case from parser facts, not a proof — treat as a lead to verify.",
+    "confidence": 0.8,
+    "evidence": [
+      {
+        "file": "src/childsafe/vision/landmarks.py",
+        "symbol": "src/childsafe/vision/landmarks.LandmarkDetector._hand_result",
+        "detail": "Loops nest 2 deep, so the body runs about O(n²) in the loop bounds.",
+        "line": 58,
+        "fact_id": "5c5a3abb1774c2973a6eb65b3f1bf764"
+      },
+      {
+        "symbol": "src/childsafe/vision/landmarks.LandmarkDetector._hand_result",
+        "detail": "loop_depth=2, loop_count=2, cyclomatic=4",
+        "fact_id": "5c5a3abb1774c2973a6eb65b3f1bf764"
+      }
+    ],
+    "suggested_actions": [
+      "Confirm the hot path with a profiler or benchmark before optimizing",
+      "Batch or hoist per-iteration I/O out of loops; add memoization or an iterative rewrite for recursion"
+    ]
+  },
+  {
+    "title": "Additional performance risks: 19 more (see analyze_performance)",
+    "source": "performance",
+    "description": "19 further findings at medium severity or above are not listed individually. They are ranked below those above, not dismissed: call analyze_performance for the full set, with min_severity and package/repo filters.",
+    "confidence": 0.5,
+    "evidence": null,
+    "suggested_actions": [
+      "Call analyze_performance with min_severity=high to see the worst of the remainder"
+    ]
+  }
+]

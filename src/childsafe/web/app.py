@@ -422,6 +422,28 @@ def create_app(demo: Demo) -> FastAPI:
                                 if getattr(demo,'notifier',None) is not None else None),
                 "thresholds": {k: demo.cfg["temporal"][k] for k in ("d_enter", "d_exit")}}
 
+    @app.get("/api/phone")
+    async def phone():
+        """Pairing dialog status; polling it also syncs with the alert service (throttled)."""
+        notifier = getattr(demo, 'notifier', None)
+        if notifier is None:
+            return JSONResponse({'enabled': False}, headers={'Cache-Control': 'no-store'})
+        await run_in_threadpool(notifier.refresh)
+        return JSONResponse({'enabled': True, 'url': notifier.url, 'paired': bool(notifier.pairing_code),
+                             'subscribers': notifier.status['subscribers'], 'sent': notifier.status['sent'],
+                             'last_error': notifier.status['last_error']}, headers={'Cache-Control': 'no-store'})
+
+    @app.get("/api/phone/qr.svg")
+    def phone_qr():
+        notifier = getattr(demo, 'notifier', None)
+        link = notifier.pairing_url() if notifier is not None else ''
+        if not link:
+            return JSONResponse({'error': 'phone alerts not ready'}, status_code=404)
+        import segno
+        out = io.BytesIO()
+        segno.make(link, error='m').save(out, kind='svg', scale=8, border=2, dark='#000', light='#fff')
+        return Response(out.getvalue(), media_type='image/svg+xml', headers={'Cache-Control': 'no-store'})
+
     @app.post("/api/frame")
     async def frame(request: Request, kind: str = "", severity: int = 0, mode: str = "hand",
                     token: str = '', sequence: int = -1, capture_t: float = float('nan')):

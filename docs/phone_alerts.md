@@ -44,8 +44,14 @@ dịch vụ khởi động lại (bản sao ở `outputs/phone_alerts/subscripti
 
 ## 3. Điện thoại
 
-Mở `https://<tên>.onrender.com` bằng **Chrome trên Android** → nhập `MONITOR_CODE` →
-**Bật thông báo trên điện thoại này** → cho phép → **Gửi thông báo thử**. Mỗi điện thoại làm một lần.
+Cách nhanh: khi demo đang chạy kèm cảnh báo (bước 4), bấm nút **Điện thoại** ở đầu trang demo.
+Hộp thoại hiện mã QR chứa link trang cảnh báo và mã ghép đôi (sau dấu `#`, trình duyệt không gửi
+phần này lên máy chủ). Quét bằng camera điện thoại → mở bằng **Chrome** → **Bật thông báo trên
+điện thoại này** → cho phép. Hộp thoại tự đổi sang “Đã ghép 1 điện thoại ✓”. Laptop tự lấy mã
+ghép đôi từ dịch vụ bằng `ALERT_TOKEN`, nên không cần nhập `MONITOR_CODE` ở đâu khác.
+
+Cách thủ công: mở `https://<tên>.onrender.com` bằng Chrome, nhập `MONITOR_CODE`, bật thông báo,
+**Gửi thông báo thử**. Mỗi điện thoại làm một lần.
 Nếu bật tiết kiệm pin, Android có thể làm thông báo đến chậm. iPhone chỉ nhận khi đã “Thêm vào
 Màn hình chính” (iOS 16.4+); chưa thử.
 

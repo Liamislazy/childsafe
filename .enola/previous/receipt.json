@@ -1,0 +1,151 @@
+{
+  "snapshot_id": "sha256:3ff1eca724049d8d59ad8ccf33f435fba024f64605696579daa9a8db4de8306a",
+  "format_version": 1,
+  "enola_version": "0.4.21",
+  "extractor_version": "v270",
+  "generated_at": "2026-11-08T04:14:32Z",
+  "duration": "8m33.2514426s",
+  "repo_path": "D:\\AI_project\\Project\\Piise_children_safety",
+  "git": {
+    "ref": "fork-in-hand-caution",
+    "commit": "879d74eb2e0686ba2655adeb5bbf1b1df20c8fb7",
+    "dirty": false,
+    "remote": "github.com/liamislazy/childsafe"
+  },
+  "extractors": [
+    "manifests",
+    "mdintent",
+    "kotlin",
+    "python"
+  ],
+  "explainers": [
+    "cycles",
+    "layers",
+    "crossrepo",
+    "coverage",
+    "unused-routes",
+    "domain",
+    "query-loops",
+    "dead-methods",
+    "entry-points",
+    "messaging-coverage",
+    "god-class",
+    "hotspots",
+    "dependency-depth",
+    "exported-surface",
+    "complexity-outliers",
+    "intent",
+    "constraints",
+    "vendored-candidates",
+    "import-closure",
+    "package-metrics",
+    "dead-code",
+    "performance"
+  ],
+  "renderers": [
+    "llm_context"
+  ],
+  "config_hash": "sha256:73d78ea79f51e19979d4c7d00bd9463ae684ebcb909116abad86675323c32c05",
+  "ignore_glob_hash": "sha256:7523cc6397a498e151125a682d28fbf6df20c6f51f6dfaf18fd8f5239a20d2d8",
+  "output_hashes": {
+    "facts.jsonl": "sha256:a1fa3fd511ca944e18794405f7e6973377de02cc1daa5d678ad27e592203b6d7",
+    "insights.json": "sha256:5c9b8df78a3d07e781ad7476fa4269c91e12e212b500d47a742da9125258d395",
+    "llm_context.md": "sha256:7f7653c89da7b42935ed43f2d393bf98df0a800b598ba9869d70ca4639e800b7"
+  },
+  "fact_count": 2426,
+  "insight_count": 113,
+  "quality": {
+    "files_seen": 39301,
+    "files_parsed": 206,
+    "files_skipped": 63,
+    "dirs_skipped": 15,
+    "skipped_sample": [
+      ".git/ (glob: **/.git/**)",
+      ".pytest_cache/ (glob: **/.pytest_cache/**)",
+      ".venv/ (glob: **/.venv/**)",
+      ".venv-notify/Lib/site-packages/ (glob: **/site-packages/**)",
+      ".venv-relay/Lib/site-packages/ (glob: **/site-packages/**)",
+      "scripts/__pycache__/ (glob: **/__pycache__/**)",
+      "services/notify/test_app.py (glob: **/test_*.py)",
+      "src/childsafe/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/alerts/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/classifier/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/companion/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/data/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/evaluation/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/runtime/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/vision/__pycache__/ (glob: **/__pycache__/**)",
+      "src/childsafe/web/__pycache__/ (glob: **/__pycache__/**)",
+      "tests/browser_client.py (glob: **/tests/**/*.py)",
+      "tests/test_active_detector_provenance.py (glob: **/test_*.py)",
+      "tests/test_alerts.py (glob: **/test_*.py)",
+      "tests/test_audio_labels.py (glob: **/test_*.py)"
+    ],
+    "parse_errors": 0,
+    "heuristic_insights": 111,
+    "coverage": {
+      "services_total": 0,
+      "coverage_gaps": 0,
+      "unresolved_edges": 0,
+      "extractors_reporting": 1,
+      "extraction_unresolved": 81
+    },
+    "census": {
+      "files_walked": 39364,
+      "parsed": 206,
+      "excluded_by_ignore": 63,
+      "excluded_by_kind": 39079,
+      "excluded_kinds": {
+        "(no extension)": 4,
+        ".bat": 6,
+        ".cfg": 2,
+        ".cjs": 5,
+        ".csh": 1,
+        ".csv": 19,
+        ".docx": 1,
+        ".exe": 23,
+        ".fish": 1,
+        ".gitignore": 2,
+        ".ipynb": 7,
+        ".jar": 1,
+        ".jpg": 35457,
+        ".json": 63,
+        ".kts": 4,
+        ".lock": 1,
+        ".log": 15,
+        ".npz": 34,
+        ".nu": 1,
+        ".pdf": 2,
+        ".pem": 2,
+        ".png": 91,
+        ".properties": 3,
+        ".ps1": 5,
+        ".pt": 30,
+        ".sqlite3": 1,
+        ".sqlite3-shm": 1,
+        ".sqlite3-wal": 1,
+        ".tag": 1,
+        ".task": 2,
+        ".txt": 3283,
+        ".xml": 1,
+        ".yaml": 5,
+        ".zip": 4
+      },
+      "skipped_with_cause": 16,
+      "top_skip_causes": [
+        {
+          "cause": "claimed by python, no facts emitted",
+          "count": 8
+        },
+        {
+          "cause": "claimed by typescript, which did not run this snapshot",
+          "count": 7
+        },
+        {
+          "cause": "claimed by manifests, no facts emitted",
+          "count": 1
+        }
+      ]
+    }
+  }
+}

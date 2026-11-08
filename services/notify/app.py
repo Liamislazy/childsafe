@@ -150,6 +150,13 @@ def alert(body: Alert, request: Request, authorization: str | None = Header(None
         return {'sent': sent, 'subscribers': len(subscriptions)}
 
 
+@app.get('/api/pairing')
+def pairing(authorization: str | None = Header(None)):
+    """The laptop shows MONITOR_CODE as a QR code, so phones never type it."""
+    _laptop(authorization)
+    return {'code': os.environ.get('MONITOR_CODE', '')}
+
+
 @app.get('/api/subscriptions')
 def backup(authorization: str | None = Header(None)):
     _laptop(authorization)

@@ -38,6 +38,8 @@ class PhoneNotifier:
         self.url, self.token, self.store = url.rstrip('/'), token, Path(store)
         self.keepalive_s, self.timeout_s = keepalive_s, timeout_s
         self._last_sent = {}               # level -> time of the last alert at that level
+        self.pairing_code = ''             # MONITOR_CODE from the service, for the pairing QR
+        self._last_sync = 0.
         self.queue: queue.Queue = queue.Queue(maxsize=20)
         self.status = dict(sent=0, subscribers=None, last_error='', last_sent_t=None)
         self._stop = threading.Event()
@@ -92,8 +94,25 @@ class PhoneNotifier:
             except Exception as error:      # network/DNS/HTTP errors: report, keep the demo running
                 self.status['last_error'] = _describe(error)
 
+    def pairing_url(self) -> str:
+        """Phone page URL with the pairing code after '#' (never sent to the server by browsers)."""
+        return f'{self.url}/#code={self.pairing_code}' if self.pairing_code else ''
+
+    def refresh(self, min_interval_s: float = 3.):
+        """Sync now (the pairing dialog polls this) unless it ran within min_interval_s."""
+        if time.monotonic() - self._last_sync < min_interval_s:
+            return
+        try:
+            self._sync()
+            self.status['last_error'] = ''
+        except Exception as error:
+            self.status['last_error'] = _describe(error)
+
     def _sync(self):
         """Back up the service's subscriptions locally, or restore them if it has none."""
+        self._last_sync = time.monotonic()
+        if not self.pairing_code:
+            self.pairing_code = self._request('GET', '/api/pairing').get('code', '')
         remote = self._request('GET', '/api/subscriptions').get('subscriptions', [])
         if remote:
             self.store.parent.mkdir(parents=True, exist_ok=True)
@@ -107,11 +126,7 @@ class PhoneNotifier:
 
     def _keepalive(self):
         while not self._stop.is_set():
-            try:
-                self._sync()
-                self.status['last_error'] = ''
-            except Exception as error:
-                self.status['last_error'] = _describe(error)
+            self.refresh(min_interval_s=0.)
             self._stop.wait(self.keepalive_s)
 
     def close(self):

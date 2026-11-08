@@ -38,6 +38,10 @@ ol{padding-left:20px}li{margin:8px 0}.event.danger{color:var(--danger);font-weig
 const $=id=>document.getElementById(id);
 const say=(text,ok)=>{const s=$('status');s.textContent=text;s.className='status '+(ok?'ok':'bad');};
 try{$('code').value=localStorage.getItem('childsafe-code')||'';}catch{}
+// The laptop's QR code carries the pairing code after '#', which browsers never send to the server.
+const fromQr=new URLSearchParams(location.hash.slice(1)).get('code');
+if(fromQr){$('code').value=fromQr;try{localStorage.setItem('childsafe-code',fromQr);}catch{}
+  history.replaceState(null,'',location.pathname);say('Đã nhận mã từ máy tính. Bấm “Bật thông báo trên điện thoại này”.',true);}
 const b64=s=>{const p='='.repeat((4-s.length%4)%4),r=atob((s+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from(r,c=>c.charCodeAt(0));};
 async function post(path,body){const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const out=await r.json().catch(()=>({}));if(!r.ok)throw Error(out.detail||('Lỗi '+r.status));return out;}
