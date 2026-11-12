@@ -118,9 +118,9 @@ tests/                    pytest
 
 | | Main contributions |
 |---|---|
-| **Cao Tung Lam** ([@Liamislazy](https://github.com/Liamislazy)) | repository owner; detector selection (YOLO11), object-to-mouth measurement, mouth observability, knife-in-hand voting, single-person mode |
-| **Phan Xuân Khoa** ([@s4dz](https://github.com/s4dz)) | Android companion (pairing, on-device camera inference, relay), face-proximity fixes, play-area demo, PIISE demonstration and evidence pack |
+| **Cao Tung Lam** ([@Liamislazy](https://github.com/Liamislazy)) | repository owner; Module A training and evaluation (ChildSUn, Open Images), detector selection (YOLO11), object-to-mouth measurement, mouth observability, knife-in-hand voting |
+| **Phan Xuân Khoa** ([@s4dz](https://github.com/s4dz)) | most of the multi-person live runtime and browser demo, Android companion (pairing, on-device camera inference, relay), play-area check, PIISE demonstration and evidence pack |
 
-The commit history has the full record of who did what.
+The alert rules and vision code were written by both. The commit history has the full record.
 
 Background, scope and literature notes: [docs/handoff.md](docs/handoff.md). PIISE materials: [docs/piise/README.md](docs/piise/README.md).
