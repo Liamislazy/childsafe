@@ -1,32 +1,83 @@
-# ChildSafe object-near-mouth warning prototype
+# ChildSafe: on-device warning when a held object nears a child's mouth
 
-*Nguyên mẫu xử lý tại chỗ để hỗ trợ người chăm sóc khi vật cầm tay tiến sát vùng miệng trên ảnh; không xác nhận tiếp xúc, nuốt hoặc nghẹn.*
+A research prototype that watches one camera feed on a local machine and warns a caregiver when a hand-held object stays close to a person's mouth in the image. All processing happens on the device. No video is saved.
 
-- **Module A**: safe/unsafe object classifier trained on ChildSUn (EfficientNet-B0, MobileNetV3, VGG19-BN baseline), with a leak-free group split, temperature scaling and Grad-CAM.
-- **Runtime**: one webcam/video URL, local YOLO11 segmentation selected for the device, up to four temporary person IDs, MediaPipe on original-image person crops, and separate alert histories.
-- **Rule layer**: duration window + hysteresis, visible object-mask proximity and normal / caution / danger, independently observable / degraded / unobservable. Cooldown limits notifications.
-- **Evaluation tools**: false alarms per hour, event recall and latency, with a distance-only baseline and ablations. Real-camera event results remain unmeasured.
+> **Scope.** ChildSafe is **not a choking detector**. It cannot confirm contact, insertion or swallowing, and it does not replace adult supervision. Its accuracy on real cameras with real participants has **not been measured yet**. Every result below is offline, on public image datasets.
 
-Background, scope and the literature notes are in [docs/handoff.md](docs/handoff.md). Ethics rules are in [docs/ethics.md](docs/ethics.md).
+## Why
 
-For the elevated-camera runtime, use [the tested dependency pins](requirements-runtime.txt) and [the testing guide and limitations](docs/elevated_camera.md). Local detector weights are required; startup never downloads them. The default configuration is **uncalibrated** and has limited object coverage. Pen/coin detector training remains pending.
+Young children put small objects in their mouths, and many of these objects are choking or injury hazards. A caregiver cannot watch every second. The idea is a cheap, private early warning: notice the *approach* (a risky object moving toward the mouth and staying there) a few seconds earlier, and leave the decision to the adult.
 
-For PIISE preparation, use the [scope, demonstration and evidence pack](docs/piise/README.md).
-For the fixed-table prevention trial, use [Một phút chuẩn bị góc chơi](docs/play_area_demo.md):
-`python scripts/play_area_demo.py` then open http://127.0.0.1:8002/play-area.
-This separate prototype checks visible knife/scissors/fork candidates without needing a face or hand;
-user checkmarks are self-reports, not a safety certificate. Real-table accuracy remains unmeasured.
-`scripts/check_demo_readiness.py` inventories the actual selected local weights without opening a camera.
-`scripts/prepare_fair_evidence.py` exports the strict session comparison, or explicitly reports missing data.
-The finalized research report on Drive is separate and is not rewritten by these tools.
+## System overview
 
-For the complete ChildSUn + Open Images classification dataset (27,883 images, 11 classes), import [the Kaggle notebook](notebooks/childsafe_expanded_kaggle.ipynb) and follow [the full-data training instructions](docs/kaggle_expanded_training.md). Open Images test stays separate; validation and calibration use different groups.
+```text
+camera frame
+   │
+   ├─► YOLO11-seg ── person and object masks (up to 4 temporary person IDs)
+   │
+   ├─► MediaPipe (on each person crop) ── hands and mouth landmarks
+   │
+   ├─► Module A classifier ── object crop → 10 classes → calibrated P(unsafe)
+   │
+   └─► rule layer ── mask-to-mouth proximity × dwell time × hysteresis
+                       → normal / caution / danger  (+ observable / degraded / unobservable)
+                       → cooldown-limited alert
+```
 
-After downloading `full_dataset_results.zip`, follow [the full-model demo and camera checklist](docs/full_dataset_camera_checklist.md). Both demo launchers recognize the imported checkpoint and use the multi-person object-mask pipeline for live alerts. The browser offers per-person diagnostics, sound alerts, numeric session export and independent observer markers.
+- **Module A** classifies object crops from the ChildSUn dataset (baby items, ball, fork, fruit, heater, knife, scissors, socket, spoon, toy) and outputs a calibrated probability that the object is unsafe.
+- **Runtime**: webcam or video URL, a local YOLO11 segmentation model chosen for the hardware, MediaPipe landmarks, a separate alert history per person.
+- **Rule layer**: an alert needs visible object-mask proximity to the mouth, held for a duration window, with hysteresis. When the mouth is not visible the system says so instead of guessing. Lost mouth landmarks keep recent risk for at most 0.8 s.
+- **Companion app (Android)**: pairs with the monitor, can run camera inference on the phone, and relays alerts.
+- **Play-area check**: a separate demo that scans a table for visible knives, scissors or forks before play begins.
+- **Evaluation tools**: false alarms per hour, event recall and latency, a distance-only baseline and ablations. These tools are built, but no real-camera sessions have been scored with them yet.
 
-The [18 October review changes](docs/review_changes_2026_10_18.md) separate contextual hazards from dataset labels, harden identity/session handling, and add scale-aware temporal object evidence. Use the [current runtime guide](docs/product_runtime_guide.md) and [targeted trial workflow](docs/targeted_camera_trials.md). Real-camera event accuracy, calibrated thresholds and performance with actual participants remain unverified; this is not a choking detector.
+## Results (offline)
 
-## Setup (Windows, local GPU)
+### 1. A leak-free split changes the story
+
+ChildSUn contains augmented copies of the same source photo. With a random split, **91.8 % of test images have a copy of the same photo in the training set**. We grouped near-duplicates with perceptual hashing (pHash/dHash) and split by group.
+
+| Model | Random split acc. | **Group split acc.** | Group macro-F1 | Group unsafe recall |
+|---|---|---|---|---|
+| EfficientNet-B0 | 0.993 | **0.920** | 0.896 | 0.987 |
+| MobileNetV3-Large | 0.998 | **0.878** | 0.855 | 0.971 |
+| VGG19-BN | 0.996 | **0.915** | 0.862 | 0.961 |
+
+The random split inflates accuracy by 7–12 points. The group split is the honest number. Each model was trained once (seed 42), so differences of 1–3 points between models should not be used to rank them.
+
+Temperature scaling lowers the calibration error of P(unsafe), the value the alert layer uses, for all three models (EfficientNet-B0 binary ECE: 0.031 → 0.022). Full tables, per-class recall and corruption curves are in [docs/results_moduleA.md](docs/results_moduleA.md).
+
+### 2. Out-of-domain objects
+
+A classifier trained only on ChildSUn has never seen a pen, phone or book, so it has to force them into one of its 10 classes. We tested it on 4,069 crops from the **Open Images V7 test split**, which was never used for training.
+
+| | ChildSUn only | + Open Images, 102 classes as "other" |
+|---|---|---|
+| ChildSUn accuracy | 92.1 % | 87.3 % |
+| Open Images accuracy (shared classes) | 74.0 % | **90.6 %** |
+| "other" objects called unsafe | 19.5 % | **0.8 %** |
+| pens called unsafe | 72.8 % | 10.9 % |
+
+Adding an "other" class trades about 5 points on ChildSUn for much better behaviour on everyday objects. See [docs/results_openimages.md](docs/results_openimages.md).
+
+### Known weaknesses
+
+- Gaussian and ISO noise drop accuracy sharply (EfficientNet-B0: 0.92 → 0.15 at severity 3).
+- Spoon has only 5 test images, so its recall is not reliable.
+- The pretrained YOLO11n-seg detector does not locate pens or coins. A dedicated detector is still in training.
+- Default thresholds are uncalibrated. Proximity in the image does not prove physical contact.
+
+## Ethics and privacy
+
+- No video of real children was recorded. Tests use adults and dolls, with consent for every adult recording.
+- Processing is on-device. Event logs store numbers only, never frames.
+- The project follows Vietnam's Personal Data Protection Law (91/2025/QH15).
+
+Details: [docs/ethics.md](docs/ethics.md).
+
+## Getting started
+
+Windows with a local NVIDIA GPU, Python 3.12 (MediaPipe has no wheels for 3.14):
 
 ```bash
 uv venv .venv --python 3.12
@@ -36,56 +87,40 @@ uv pip install --python .venv -e .
 .venv\Scripts\python scripts\download_mediapipe_models.py
 ```
 
-Use Python 3.12, because MediaPipe has no wheels for 3.14. On Colab, run `pip install -r requirements.txt && pip install -e .`.
+Web demo (live alerts, per-person diagnostics, degradation slider, numeric session export):
 
-## Pipeline
-
-| Step | Command | Output |
-|---|---|---|
-| 1. Download ChildSUn (needs `~/.kaggle/kaggle.json`, or download by hand into `data/raw/childsun`) | `python scripts/download_childsun.py` | `data/raw/childsun` |
-| 2. Inspect: folders, counts, license, augmentation hints | `python scripts/inspect_dataset.py` | `docs/dataset_report.md` |
-| 3. A1: pHash/dHash near-duplicate groups; group split and random split | `python scripts/make_splits.py` | `data/splits/splits.csv`, `docs/split_report.md`, montages |
-| 4-6. Train 3 models on both splits; calibrate on val; test | `python scripts/train_all.py` | `outputs/runs/*`, `docs/results_moduleA.md` |
-| A2/A5. OOD webcam photos and degradation curves | `python -m childsafe.classifier.evaluate --run outputs/runs/efficientnet_b0_group --ood data/ood --corruptions` | `eval_report.json`, `degradation.png` |
-| A5. Robust augmentation | `python -m childsafe.classifier.train --arch efficientnet_b0 --split group --robust` | |
-| Grad-CAM | `python -m childsafe.classifier.gradcam --run outputs/runs/efficientnet_b0_group` | `gradcam/*.jpg` |
-| Live demo | `python scripts/run_webcam.py --ckpt outputs/runs/efficientnet_b0_group/best.pt` | `outputs/events/*.csv` (no video) |
-| Web demo: live camera alerts (person, hands, mouth, object), degradation slider, session download | `python scripts/web_demo.py` then open http://127.0.0.1:8000 | nothing saved |
-| B1. Normalizer stability | `run_webcam.py --no-classifier --log-features --condition ...` then `python scripts/b1_normalization.py --glob ...` | table |
-| E2. Scenario videos to features | `python scripts/extract_features.py --videos data/recordings --ckpt ...` | `outputs/features/*.csv` |
-| D3. Tune on dev (never on test) | `python scripts/evaluate_alerts.py grid --sessions outputs/scenarios --split dev` | `outputs/grid_dev_config.json` |
-| E1/E4. Report on frozen test sessions | `python scripts/evaluate_alerts.py report --sessions outputs/scenarios --split test` | `outputs/report_test.json` |
-| E1. Dev trade-off points | `python scripts/evaluate_alerts.py tradeoff --sessions outputs/scenarios --split dev` | `outputs/tradeoff_dev.json` |
-
-Annotation format: [data/scenarios/README.md](data/scenarios/README.md). Every threshold is in [configs/default.yaml](configs/default.yaml).
-
-## Layout
-
-```
-configs/default.yaml        all thresholds and paths
-src/childsafe/data/         catalog, perceptual-hash dedup, group split, corruptions, dataset
-src/childsafe/classifier/   timm models, train, calibration, evaluate, Grad-CAM
-src/childsafe/vision/       MediaPipe landmarks, geometry/normalization, smoothing, hand-crop classifier
-src/childsafe/alerts/       temporal rules, AlertProcessor (D1-D3), privacy-preserving event log
-src/childsafe/evaluation/   event metrics (E1), replay of logged features
-src/childsafe/pipeline.py   frame -> landmarks -> classifier -> alert (shared by live and offline)
-scripts/                    command-line entry points
-tests/                      pytest (python -m pytest)
+```bash
+python scripts/web_demo.py        # then open http://127.0.0.1:8000
 ```
 
-## Design notes
+Detector weights must already be on the machine. Startup never downloads them.
 
-- **Live and offline use the same code.** `AlertProcessor` runs both in the webcam app and on logged feature CSVs. Tuning (D3) and ablation (E4, `Components`) therefore run on numbers only, without re-processing video.
-- **Offline extraction classifies detected object crops.** Schema v2 logs geometry and quality per person; replay consumes the same observations. Legacy CSVs retain a single-person compatibility mode with unknown observation coverage. Frame/hand classification options from older scripts do not fabricate object positions.
-- **Lost mouth landmarks preserve recent risk for at most 0.8 seconds.** Held coordinates never accumulate proximity dwell. Events end with explicit departure, observation-loss, person-exit or disconnect reasons.
-- **Dataset labels are not contextual safety judgments.** Modern localized proximity requests caution even for toy/fruit/spoon labels. High alerts require an explicitly scoped hazard, reliable temporal mask evidence and dwell. Legacy CSVs preserve the historical policy.
-- **Known limitations.** Image proximity does not establish physical contact or insertion. A box or hand near the head cannot confirm danger. Pretrained YOLO11n-seg does not locate pens/coins. Elevated thresholds and actual multi-person webcam performance remain unvalidated; this is not ready for real deployment.
+The full training and evaluation pipeline (dataset download, deduplicated splits, training, calibration, Grad-CAM, OOD and corruption tests, alert tuning on dev sessions and reporting on frozen test sessions) is documented step by step in **[docs/developer_guide.md](docs/developer_guide.md)**. All thresholds live in [configs/default.yaml](configs/default.yaml).
 
-## Detector bút và đũa
+## Repository layout
 
-Luồng train vị trí vật riêng nằm trong [hướng dẫn detector](docs/pen_chopsticks_detector_training.md) và [notebook Kaggle](notebooks/childsafe_detector_kaggle.ipynb). Dữ liệu nguyên khung/bounding box khác với crop phân loại; model hai lớp này cần kiểm chứng trước khi ghép vào camera.
+```text
+configs/                  thresholds and paths
+src/childsafe/data/       catalog, perceptual-hash dedup, group split, corruptions
+src/childsafe/classifier/ models, training, calibration, evaluation, Grad-CAM
+src/childsafe/vision/     detection, landmarks, geometry, smoothing
+src/childsafe/alerts/     temporal rules, alert processor, privacy-preserving event log
+src/childsafe/evaluation/ event metrics, replay of logged features
+src/childsafe/runtime/    multi-person live pipeline
+src/childsafe/web/        browser demo
+android/                  companion app
+notebooks/                Kaggle training notebooks
+docs/                     results, ethics, guides, PIISE evidence pack
+tests/                    pytest
+```
 
-Lượt sửa camera tiếp theo có [runtime và quy trình train vật nguy cơ mở rộng](docs/expanded_hazard_runtime.md)
-và [notebook detector nhiều lớp](notebooks/childsafe_hazard_detector_kaggle.ipynb). Danh mục gán nhãn gồm
-15 loại; chỉ lớp có dữ liệu thật mới được train. Detector riêng ghép qua `--object-model`, giữ detector người.
-Trọng số trong máy hiện tại vẫn chưa nhận riêng bút/đũa/đồng xu; không coi danh mục cấu hình là model đã học.
+## Team
+
+| | Main contributions |
+|---|---|
+| **Cao Tung Lam** ([@Liamislazy](https://github.com/Liamislazy)) | repository owner; detector selection (YOLO11), object-to-mouth measurement, mouth observability, knife-in-hand voting, single-person mode |
+| **Phan Xuân Khoa** ([@s4dz](https://github.com/s4dz)) | Android companion (pairing, on-device camera inference, relay), face-proximity fixes, play-area demo, PIISE demonstration and evidence pack |
+
+The commit history has the full record of who did what.
+
+Background, scope and literature notes: [docs/handoff.md](docs/handoff.md). PIISE materials: [docs/piise/README.md](docs/piise/README.md).
